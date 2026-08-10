@@ -1,0 +1,26 @@
+# erzeugte Inhalte / generated content
+packs/
+dubs/
+tools/
+
+# Einstellungen sind persoenlich / personal settings
+dubforge_settings.json
+dubstage_settings.json
+
+# Vorgaengerdateien - koennen geloescht werden
+ChoicerPackForge.pyw
+packforge_core.py
+Start ChoicerPackForge.bat
+push_log.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Betriebssystem / OS
+Thumbs.db
+desktop.ini
+.DS_Store
