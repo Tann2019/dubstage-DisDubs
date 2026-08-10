@@ -292,7 +292,22 @@ class Game(tk.Tk):
             pass
         s.configure("Mic.TCombobox", fieldbackground=PANEL_HI,
                     background=PANEL_HI, foreground=TXT, arrowcolor=TXT,
-                    bordercolor=EDGE, lightcolor=PANEL_HI, darkcolor=PANEL_HI)
+                    bordercolor=EDGE, lightcolor=PANEL_HI, darkcolor=PANEL_HI,
+                    selectbackground=PANEL_HI, selectforeground=TXT)
+        # "readonly" hat eigene Farben, die configure() nicht erreicht
+        s.map("Mic.TCombobox",
+              fieldbackground=[("readonly", PANEL_HI), ("disabled", PANEL)],
+              background=[("readonly", PANEL_HI), ("active", PANEL_HI)],
+              foreground=[("readonly", TXT), ("disabled", DIM)],
+              selectbackground=[("readonly", PANEL_HI), ("focus", PANEL_HI)],
+              selectforeground=[("readonly", TXT), ("focus", TXT)],
+              arrowcolor=[("readonly", TXT), ("disabled", DIM)])
+        # Die aufklappende Liste ist ein Tk-Widget, das ttk nicht gestaltet
+        self.option_add("*TCombobox*Listbox.background", PANEL_HI)
+        self.option_add("*TCombobox*Listbox.foreground", TXT)
+        self.option_add("*TCombobox*Listbox.selectBackground", ACC)
+        self.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
+        self.option_add("*TCombobox*Listbox.borderWidth", 0)
 
     # ------------------------------------------------------------- Basics
     def size(self):

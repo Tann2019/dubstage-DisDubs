@@ -324,7 +324,26 @@ class App(tk.Tk):
         s.map("Go.TButton", background=[("active", "#5ee7ae")])
         s.configure("TEntry", fieldbackground=BG2, foreground=FG,
                     insertcolor=FG, padding=4)
-        s.configure("TCombobox", fieldbackground=BG2, foreground=FG, padding=4)
+        # Comboboxen: der Zustand "readonly" hat eigene Farben, die
+        # configure() nicht erreicht - deshalb zusaetzlich map().
+        s.configure("TCombobox", fieldbackground=BG2, background=BG2,
+                    foreground=FG, arrowcolor=FG, bordercolor="#3a3d4d",
+                    lightcolor=BG2, darkcolor=BG2, padding=4,
+                    selectbackground=BG2, selectforeground=FG)
+        s.map("TCombobox",
+              fieldbackground=[("readonly", BG2), ("disabled", BG)],
+              background=[("readonly", BG2), ("active", BG2)],
+              foreground=[("readonly", FG), ("disabled", "#7a7f96")],
+              selectbackground=[("readonly", BG2), ("focus", BG2)],
+              selectforeground=[("readonly", FG), ("focus", FG)],
+              arrowcolor=[("readonly", FG), ("disabled", "#7a7f96")])
+        # Die aufklappende Liste ist ein Tk-Listbox-Widget und wird von
+        # ttk nicht mitgestaltet - die muss ueber Optionen gesetzt werden.
+        self.option_add("*TCombobox*Listbox.background", BG2)
+        self.option_add("*TCombobox*Listbox.foreground", FG)
+        self.option_add("*TCombobox*Listbox.selectBackground", ACC)
+        self.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
+        self.option_add("*TCombobox*Listbox.borderWidth", 0)
         s.configure("TCheckbutton", background=BG, foreground=FG)
         s.configure("TRadiobutton", background=BG, foreground=FG)
         s.configure("Treeview", background=BG2, fieldbackground=BG2,

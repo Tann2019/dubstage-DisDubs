@@ -30,6 +30,15 @@ call :laenge "%P%"
 echo Pfadlaenge: %LEN% >> "%LOG%"
 if %LEN% GTR 150 goto :zulang
 
+rem ------------------------------------------------- Ordner freigeben
+rem Auf exFAT/FAT32 (oft externe Platten) speichert Windows keine
+rem Dateibesitzer. Git verweigert dann die Arbeit, bis der Ordner
+rem ausdruecklich als vertrauenswuerdig eingetragen ist.
+set "GITPATH=%CD:\=/%"
+git config --global --get-all safe.directory 2>nul | findstr /i /x /c:"%GITPATH%" >nul
+if errorlevel 1 git config --global --add safe.directory "%GITPATH%"
+echo safe.directory: %GITPATH% >> "%LOG%"
+
 rem ---------------------------------------------------------- schreibbar?
 break > "%~dp0.schreibtest" 2>nul
 if not exist "%~dp0.schreibtest" goto :nowrite
