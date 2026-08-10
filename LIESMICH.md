@@ -123,6 +123,8 @@ Damit ein Ordner als Pack zählt, braucht er ein **`dub_video`** (mp4, ogv, mkv,
 
 **„ffmpeg nicht gefunden"** — Setup.bat nochmal laufen lassen. Klappt das nicht: bei `gyan.dev/ffmpeg/builds` die **release full** ziehen und `ffmpeg.exe`, `ffprobe.exe`, `ffplay.exe` aus `bin` in `tools\` legen.
 
+**YouTube-Download schlägt fehl** — Fast immer ist yt-dlp veraltet. YouTube ändert ständig etwas an der Auslieferung, deshalb hält das Werkzeug nur wenige Wochen. In DubForge oben rechts auf **yt-dlp aktualisieren** klicken; die Version samt Alter steht beim Start im Protokoll. Von Hand geht es im Terminal mit `py -m pip install --upgrade yt-dlp`.
+
 **Demucs bricht ab** — Kein Beinbruch, das Tool schaltet automatisch auf den Originalton um. Dann fehlt nur der Backing-Track.
 
 **Clips sitzen leicht daneben** — Bei YouTube-Downloads kann der Schnitt am Keyframe hängen. Zeitspanne ein paar Sekunden großzügiger setzen und im Editor nachjustieren.

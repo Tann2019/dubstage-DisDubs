@@ -4,8 +4,8 @@ DubForge - Dub-Packs aus Videos bauen.
 DubForge - build dub packs from video.
 
 Ablauf / flow:
-  Quelle -> Analysieren -> Clips pruefen -> Pack bauen -> Ins Spiel kopieren.
-  Source -> Analyse -> Review clips -> Build pack -> Copy into the game.
+  Quelle -> Analysieren -> Clips pruefen -> Pack bauen.
+  Source -> Analyse -> Review clips -> Build pack.
 """
 
 import os
@@ -72,6 +72,22 @@ T = {
     "sep_voc":      ("Stimmen von Musik trennen (Demucs)",
                      "Separate vocals from music (Demucs)"),
     "analyze":      ("Laden und analysieren", "Load and analyse"),
+    "upd_ytdlp":    ("yt-dlp aktualisieren", "Update yt-dlp"),
+    "ytdlp_ver":    ("yt-dlp %s (%d Tage alt)", "yt-dlp %s (%d days old)"),
+    "ytdlp_old":    ("yt-dlp ist %d Tage alt. YouTube aendert staendig etwas - "
+                     "bei Download-Problemen zuerst aktualisieren.",
+                     "yt-dlp is %d days old. YouTube keeps changing things - "
+                     "update it first if downloads fail."),
+    "st_upd":       ("Aktualisiere yt-dlp ...", "Updating yt-dlp ..."),
+    "upd_done":     ("Jetzt: yt-dlp %s", "Now: yt-dlp %s"),
+    "upd_fail":     ("Aktualisierung hat nichts geaendert. Im Terminal:\n"
+                     "py -m pip install --upgrade yt-dlp",
+                     "The update changed nothing. In a terminal:\n"
+                     "py -m pip install --upgrade yt-dlp"),
+    "dl_hint":      ("Der Download ist fehlgeschlagen. yt-dlp ist %d Tage alt - "
+                     "sehr wahrscheinlich liegt es daran.",
+                     "The download failed. yt-dlp is %d days old - that is "
+                     "very likely the cause."),
     "demucs_hint":  ("Erster Lauf mit Demucs dauert laenger (Modell wird geladen).",
                      "The first Demucs run takes longer (the model is downloaded)."),
 
@@ -108,8 +124,7 @@ T = {
     "redetect":     ("Neu erkennen", "Detect again"),
 
     # --- Schritt 3
-    "s3":           (" 3. Pack bauen und ins Spiel bringen ",
-                     " 3. Build the pack and get it into the game "),
+    "s3":           (" 3. Pack bauen ", " 3. Build the pack "),
     "pack_name":    ("Pack-Name:", "Pack name:"),
     "is_dub":       ("Mit Video (fuer DubStage)", "With video (for DubStage)"),
     "vheight":      ("Video-Hoehe:", "Video height:"),
@@ -138,8 +153,8 @@ T = {
     "st_done_an":   ("Fertig analysiert.", "Analysis finished."),
     "st_clip":      ("Exportiere Clip %d/%d ...", "Exporting clip %d/%d ..."),
     "st_backing":   ("Schreibe _backing_track ...", "Writing _backing_track ..."),
-    "st_ogv":       ("Konvertiere Video nach OGV (dauert am laengsten) ...",
-                     "Converting video to OGV (this takes the longest) ..."),
+    "st_ogv":       ("Konvertiere Video (dauert am laengsten) ...",
+                     "Converting the video (this takes the longest) ..."),
     "st_built":     ("Pack gebaut: %s", "Pack built: %s"),
     "log_len":      ("Laenge: %.2f s", "Length: %.2f s"),
     "log_voc_ok":   ("Vocals getrennt.", "Vocals separated."),
@@ -170,8 +185,8 @@ T = {
     "dlg_noclips_t": ("Keine Clips", "No clips"),
     "dlg_noclips":  ("Es gibt noch keine Clips.", "There are no clips yet."),
     "dlg_done_t":   ("Fertig", "Finished"),
-    "dlg_done":     ("Pack liegt in:\n%s\n\nJetzt ins Spiel kopieren?",
-                     "Pack is located at:\n%s\n\nCopy it into the game now?"),
+    "dlg_done":     ("Pack liegt in:\n%s\n\nJetzt in den Zielordner kopieren?",
+                     "Pack is located at:\n%s\n\nCopy it to the target folder now?"),
     "dlg_nobuild_t": ("Noch nichts da", "Nothing there yet"),
     "dlg_nobuild":  ("Bitte zuerst 'Pack bauen'.", "Please use 'Build pack' first."),
     "dlg_notgt_t":  ("Zielordner fehlt", "Target folder missing"),
@@ -265,6 +280,7 @@ class App(tk.Tk):
         self.clips = []
         self.selected = None
         self._caption_for = None
+        self._ytdlp_age = None
         self.built_path = None
 
         self.view_a = 0.0
@@ -416,6 +432,9 @@ class App(tk.Tk):
         self.analyze_btn.pack(side="left")
         ttk.Label(r4, text=t("demucs_hint"),
                   style="Dim.TLabel").pack(side="left", padx=10)
+        self.upd_btn = ttk.Button(r4, text=t("upd_ytdlp"),
+                                  command=self.update_ytdlp)
+        self.upd_btn.pack(side="right")
 
         # ---------------- Schritt 2: Clips
         step2 = ttk.LabelFrame(root, text=t("s2"), padding=10)
@@ -613,7 +632,31 @@ class App(tk.Tk):
             self._log(t("ff_ready",
                         t("yes") if th else t("no_caps"),
                         t("yes") if vo else t("no_caps")))
+        ver, age = pc.ytdlp_version()
+        self._ytdlp_age = age
+        if ver and age is not None:
+            self._log(t("ytdlp_ver", ver, age))
+            if age > 60:
+                self._log(t("ytdlp_old", age))
 
+
+    def update_ytdlp(self):
+        """Holt die aktuelle yt-dlp-Version nach."""
+        def work():
+            self._set_status(t("st_upd"), 30)
+            ver, age = pc.update_ytdlp(log=self._log)
+            self._new_ytdlp = ver
+            self._ytdlp_age = age
+            self._set_status(t("st_upd"), 100)
+
+        def done():
+            ver = getattr(self, "_new_ytdlp", None)
+            if ver:
+                self._log(t("upd_done", ver))
+                messagebox.showinfo(t("title"), t("upd_done", ver))
+            else:
+                messagebox.showwarning(t("title"), t("upd_fail"))
+        self._bg(work, on_done=done)
 
     # -------------------------------------------------- Thread-Kommunikation
     def _log(self, text):
@@ -697,8 +740,14 @@ class App(tk.Tk):
 
         if mode == "url":
             self._set_status(t("st_download"), 5)
-            self.video_path = pc.download_youtube(src, t0, t1, self.work,
-                                                  log=self._log)
+            try:
+                self.video_path = pc.download_youtube(src, t0, t1, self.work,
+                                                      log=self._log)
+            except Exception:
+                age = getattr(self, "_ytdlp_age", None)
+                if age is not None and age > 30:
+                    self._log(t("dl_hint", age))
+                raise
         else:
             if not os.path.isfile(src):
                 raise RuntimeError(pc.M("file_missing", src))

@@ -145,6 +145,46 @@ def ytdlp():
         return None
 
 
+def ytdlp_version():
+    """
+    Gibt (Version, Alter in Tagen) zurueck. yt-dlp versioniert nach Datum,
+    daraus laesst sich das Alter direkt ablesen.
+    """
+    yt = ytdlp()
+    if not yt:
+        return None, None
+    out = capture(list(yt) + ["--version"]).strip()
+    ver = None
+    for line in out.splitlines():
+        line = line.strip()
+        if re.match(r"^\d{4}\.\d{2}\.\d{2}", line):
+            ver = line
+            break
+    if not ver:
+        return None, None
+    m = re.match(r"(\d{4})\.(\d{2})\.(\d{2})", ver)
+    try:
+        import datetime
+        d = datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        return ver, (datetime.date.today() - d).days
+    except Exception:
+        return ver, None
+
+
+def update_ytdlp(log=None):
+    """
+    Aktualisiert yt-dlp. Als eigenstaendige Datei in tools/ kann es sich
+    selbst erneuern, ueber pip installiert muss pip ran.
+    """
+    local = os.path.join(TOOLS_DIR, _exe("yt-dlp"))
+    if os.path.isfile(local):
+        run([local, "-U"], log=log, check=False)
+    else:
+        run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
+            log=log, check=False)
+    return ytdlp_version()
+
+
 def run(cmd, log=None, check=True):
     """Fuehrt ein Kommando aus und streamt die Ausgabe an log(text)."""
     if log:
