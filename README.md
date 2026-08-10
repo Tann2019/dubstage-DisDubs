@@ -6,6 +6,20 @@ Two Windows desktop tools, Python and ffmpeg, no accounts and no cloud.
 
 ---
 
+## Screenshots
+
+**DubForge** — clip detection, waveform editor, subtitles
+
+<img src="docs/dubforge.png" alt="DubForge: waveform editor with detected clips and subtitle field" width="900">
+
+**DubStage** — recording a line, your take drawn live over the original
+
+<img src="docs/dubstage-record.png" alt="DubStage: video, subtitle and the comparison strip while recording" width="900">
+
+**DubStage** — the finished scene in your own voice
+
+<img src="docs/dubstage-finale.png" alt="DubStage: finale playing the whole scene back" width="900">
+
 ## What it does
 
 **DubForge** takes a YouTube link or a local video file, trims it to the span you want, separates the voices from music and noise, and finds the spoken segments on its own. You review the clips in a waveform editor, add subtitles, and build a pack.
