@@ -1,8 +1,17 @@
-# DubStage
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+    <img src="docs/logo.png" alt="DubStage" width="420">
+  </picture>
+</p>
 
-Dub scenes from video yourself. **DubForge** cuts a video into speakable clips, **DubStage** records your voice line by line and plays the whole scene back with it.
+<p align="center">
+  Dub scenes from video yourself — two Windows desktop tools, Python and ffmpeg, no accounts and no cloud.
+</p>
 
-Two Windows desktop tools, Python and ffmpeg, no accounts and no cloud.
+---
+
+**DubForge** cuts a video into speakable clips, **DubStage** records your voice line by line and plays the whole scene back with it.
 
 ---
 
@@ -72,6 +81,7 @@ The interface is available in German and English, switchable at runtime in the t
 
 - [`README_EN.md`](README_EN.md) — full manual in English
 - [`LIESMICH.md`](LIESMICH.md) — deutsche Anleitung
+- [`CHANGELOG.md`](CHANGELOG.md) — what changed, and why
 
 ## Licence
 
