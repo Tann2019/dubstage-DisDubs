@@ -1,0 +1,189 @@
+# -*- coding: utf-8 -*-
+"""
+Kern-Tests fuer dubforge_core / core tests.
+
+    python -m unittest discover tests -v
+
+Tests, die ffmpeg brauchen, werden uebersprungen, wenn keins da ist.
+Tests needing ffmpeg are skipped when it is missing.
+"""
+
+import os
+import sys
+import json
+import shutil
+import tempfile
+import unittest
+import zipfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(HERE))
+
+import dubforge_core as pc  # noqa: E402
+
+HAVE_FFMPEG = bool(pc.find_tool("ffmpeg") and pc.find_tool("ffprobe"))
+
+
+def make_test_video(path, seconds=12):
+    """Testbild + Sinuston in drei Bursts / test pattern + tone bursts."""
+    pc.run([pc.ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
+            "-f", "lavfi", "-i", "testsrc=size=320x180:rate=25:duration=%d" % seconds,
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=%d" % seconds,
+            "-af", "volume='if(between(t,1,2.5)+between(t,4,6)+between(t,8,9.2),"
+                   "1,0.001)':eval=frame",
+            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-shortest", path])
+    return path
+
+
+class SubtitleParsing(unittest.TestCase):
+
+    def test_srt(self):
+        cues = pc.parse_subtitles(
+            "1\n00:00:01,000 --> 00:00:02,500\nHallo\nWelt\n\n"
+            "2\n00:00:03,000 --> 00:00:04,000\nZwei\n")
+        self.assertEqual(cues, [(1.0, 2.5, "Hallo Welt"), (3.0, 4.0, "Zwei")])
+
+    def test_vtt_tags_stripped(self):
+        cues = pc.parse_subtitles(
+            "WEBVTT\n\n00:00:01.000 --> 00:00:02.500\n<c>Hello</c> <i>there</i>\n")
+        self.assertEqual(cues, [(1.0, 2.5, "Hello there")])
+
+    def test_vtt_short_timestamps(self):
+        cues = pc.parse_subtitles("WEBVTT\n\n00:01.000 --> 00:02.000\nx\n")
+        self.assertEqual(cues, [(1.0, 2.0, "x")])
+
+    def test_youtube_rolling_auto_captions(self):
+        v = ("WEBVTT\n\n"
+             "00:00:00.000 --> 00:00:01.500 align:start position:0%\n \n"
+             "hello<00:00:00.500><c> there</c>\n\n"
+             "00:00:01.500 --> 00:00:01.510 align:start position:0%\n"
+             "hello there\n \n\n"
+             "00:00:01.510 --> 00:00:03.000 align:start position:0%\n"
+             "hello there\ngeneral<00:00:02.000><c> kenobi</c>\n\n"
+             "00:00:03.000 --> 00:00:03.010\ngeneral kenobi\n \n")
+        cues = pc.parse_subtitles(v)
+        self.assertEqual([c[2] for c in cues], ["hello there", "general kenobi"])
+        self.assertAlmostEqual(cues[0][0], 0.0)
+        self.assertAlmostEqual(cues[1][0], 1.51)
+
+    def test_assign_captions_by_overlap_and_offset(self):
+        cues = [(11.0, 12.5, "A"), (14.0, 15.0, "B")]
+        clips = [{"start": 1.0, "end": 2.4, "caption": ""},
+                 {"start": 4.1, "end": 4.9, "caption": "keep"},
+                 {"start": 7.0, "end": 8.0, "caption": ""}]
+        n = pc.assign_captions(clips, cues, offset=10.0)
+        self.assertEqual(n, 1)
+        self.assertEqual(clips[0]["caption"], "A")
+        self.assertEqual(clips[1]["caption"], "keep")
+        self.assertEqual(clips[2]["caption"], "")
+        n = pc.assign_captions(clips, cues, offset=10.0, overwrite=True)
+        self.assertEqual(clips[1]["caption"], "B")
+
+
+class FileNames(unittest.TestCase):
+
+    def test_clip_filename_carries_speaker_and_cue(self):
+        fn = pc.clip_filename(3, "Solid Snake", 5.46, dub=True)
+        self.assertEqual(fn, "03_Solid_Snake_5-460.wav")
+        self.assertEqual(pc.timestamp_from_name(fn), 5.46)
+        self.assertEqual(pc.label_from_name(fn), "Solid Snake")
+
+    def test_voice_pack_has_no_cue(self):
+        fn = pc.clip_filename(1, "Voice", 5.46, dub=False)
+        self.assertEqual(fn, "01_Voice.wav")
+        self.assertIsNone(pc.timestamp_from_name(fn))
+
+    def test_matches_dubstage_reader_convention(self):
+        # DubStage/DisDubs: fraction scaled by its own length
+        self.assertEqual(pc.timestamp_from_name("01_x_5-2.wav"), 5.2)
+        self.assertEqual(pc.timestamp_from_name("01_x_5-002.wav"), 5.002)
+
+
+class PackFiles(unittest.TestCase):
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp(prefix="dfcore_")
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def test_pack_info_ini(self):
+        pc.write_pack_info(self.d, 'My "Scene"', ["Me", "", None])
+        txt = open(os.path.join(self.d, "_pack_info.ini"), encoding="utf-8").read()
+        self.assertIn('title="My \\"Scene\\""', txt)
+        self.assertIn('authors=["Me"]', txt)
+
+    def test_project_roundtrip(self):
+        data = {"version": 1, "tracks": [{"name": "A"}], "clips": []}
+        pc.write_project(self.d, data)
+        self.assertEqual(pc.read_project(self.d), data)
+        self.assertTrue(pc.PROJECT_FILE.startswith("_"))
+        self.assertTrue(pc.PACK_INFO_FILE.startswith("_"))
+
+    def test_zip_has_folder_at_top_level(self):
+        pack = os.path.join(self.d, "MyPack")
+        os.makedirs(pack)
+        open(os.path.join(pack, "dub_video.mp4"), "wb").write(b"x")
+        z = pc.zip_pack(pack)
+        names = zipfile.ZipFile(z).namelist()
+        self.assertTrue(all(n.startswith("MyPack/") for n in names))
+        self.assertIn("MyPack/dub_video.mp4", names)
+
+
+@unittest.skipUnless(HAVE_FFMPEG, "ffmpeg not found")
+class WithFfmpeg(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.d = tempfile.mkdtemp(prefix="dfmedia_")
+        cls.video = make_test_video(os.path.join(cls.d, "src.mp4"))
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.d, ignore_errors=True)
+
+    def test_probe_and_video_stream(self):
+        self.assertAlmostEqual(pc.probe_duration(self.video), 12.0, delta=0.3)
+        self.assertTrue(pc.has_video_stream(self.video))
+
+    def test_detect_clips_finds_bursts(self):
+        wav = os.path.join(self.d, "a.wav")
+        pc.extract_audio(self.video, wav)
+        data, sr = pc.load_mono(wav)
+        found = pc.detect_clips(data, sr)
+        self.assertEqual(len(found), 3, found)
+        self.assertAlmostEqual(found[0][0], 1.0, delta=0.15)
+
+    def test_decode_pcm(self):
+        d = pc.decode_pcm(self.video, 1.0, 2.5)
+        self.assertEqual(d.shape[1], 2)
+        self.assertAlmostEqual(d.shape[0] / 44100.0, 1.5, delta=0.05)
+        self.assertGreater(int(abs(d.astype("int32")).max()), 1000)
+
+    def test_frames(self):
+        png = os.path.join(self.d, "f.png")
+        pc.extract_frame(self.video, 1.0, png, width=160)
+        self.assertGreater(os.path.getsize(png), 100)
+        seq = os.path.join(self.d, "seq")
+        pc.extract_frames_range(self.video, 1.0, 2.0, seq, fps=10, width=160)
+        self.assertGreaterEqual(len(os.listdir(seq)), 9)
+
+    def test_export_clip_and_reopen_legacy(self):
+        pack = os.path.join(self.d, "Legacy")
+        os.makedirs(pack, exist_ok=True)
+        wav = os.path.join(self.d, "a.wav")
+        pc.extract_audio(self.video, wav)
+        pc.export_clip(wav, 1.0, 2.5, os.path.join(pack, "01_Snake_1-000.wav"))
+        pc.export_clip(wav, 4.0, 6.0, os.path.join(pack, "02_Otacon_4-000.wav"))
+        shutil.copy(self.video, os.path.join(pack, "dub_video.mp4"))
+        pc.write_captions(pack, {"01_Snake_1-000.wav": "hi"})
+        info = pc.read_pack_for_edit(pack)
+        self.assertEqual([t["name"] for t in info["tracks"]], ["Snake", "Otacon"])
+        self.assertEqual(len(info["clips"]), 2)
+        self.assertEqual(info["clips"][0]["caption"], "hi")
+        self.assertAlmostEqual(info["clips"][0]["end"], 2.5, delta=0.1)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

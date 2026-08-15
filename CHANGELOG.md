@@ -9,6 +9,80 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 Nothing yet.
 
+## [1.1.0] - 2026-08-15
+
+DubForge overhaul. The pack format is unchanged: everything DubStage and
+DisDubs read is written exactly as before, and the two new files start with
+`_`, which both readers skip.
+
+### Added
+
+- **Tracks - one per speaker.** The waveform now sits above a lane per
+  speaker; clips are dragged between lanes, so overlapping lines (someone
+  interrupting, two people at once) no longer fight for space on one strip.
+  The track name becomes the clip's label in the file name
+  (`03_Snake_5-460.wav`) - which is exactly what DisDubs' `speakersFrom` casts
+  parts from, and what DubStage shows as the line's label. Rename, recolour,
+  reorder and delete tracks from a right-click menu on the lane name.
+- **Editing.** Drag a clip to move it (in time and across tracks), trim its
+  edges, nudge with the arrow keys, split at the playhead, duplicate, delete;
+  undo/redo (Ctrl+Z / Ctrl+Y) across every change; hover cursors say what a
+  drag will do; the selected clip is drawn on the waveform too. Ctrl+wheel
+  zooms at the mouse, the wheel alone scrolls, Home/End jump.
+- **Playhead and preview.** Playback draws a moving playhead; double-clicking
+  the waveform plays eight seconds from there. A frame preview next to the
+  subtitle field shows who is on screen at the clip's start, and **plays the
+  video while a clip plays** (a PNG sequence of the span, 10 fps, extracted
+  in the background; Tk's own PNG support, no Pillow needed).
+- **Playback no longer depends on ffplay.** The span is decoded to PCM in
+  memory and played through `sounddevice` - the same backend DubStage uses,
+  so it works wherever DubStage does. ffplay and, on Windows, `winsound` are
+  fallbacks. The backend in use and any playback error are written to the
+  log instead of failing silently.
+- **Tests.** `tests/test_core.py` (parsing, file names, pack files, ffmpeg
+  helpers) and `tests/test_app.py` (UI smoke tests plus a full run: analyse ->
+  tracks -> playback -> build -> DubStage loads it -> zip -> reopen ->
+  rebuild). `python -m unittest discover tests -v`; ffmpeg- and
+  display-dependent tests skip themselves when those are missing.
+- **Subtitle import.** From an SRT/VTT file, or fetched from YouTube with
+  yt-dlp (manual subtitles preferred, automatic ones as a fallback - the
+  rolling auto-caption format is collapsed to one line per cue). Cues are
+  matched to clips by overlap; existing subtitles are only overwritten on
+  request. The chosen "From" offset is honoured.
+- **Reopen a pack.** Loads a built pack - video, backing track, clips, tracks,
+  subtitles, author - for further editing. Packs from earlier DubForge
+  versions open too: clips come from the file names, ends from the clip
+  lengths, speakers from the labels. Rebuilding into the same folder is safe
+  (the sources are copied out first) and reuses the pack's `dub_video.mp4`
+  instead of re-encoding it.
+- **Zip for DisDubs.** Writes `<name>.zip` with the pack folder at the top
+  level, the layout the DisDubs uploader expects.
+- **`_pack_info.ini`** (title, authors - the Choicer convention DisDubs reads)
+  and **`_dubforge.json`** (the project: tracks, exact clip bounds, subtitles,
+  source URL) are written into every pack. Both start with `_` and are
+  ignored by DubStage and DisDubs.
+- **Author field**, clip statistics line (count, tracks, missing subtitles,
+  spoken time, same-track overlaps), a collapsible log, window geometry
+  remembered, a warning before closing or reloading over unbuilt changes.
+
+### Fixed
+
+- The frame preview could get stuck on black: re-selecting the same clip
+  cancelled the pending extraction and then returned early. Analysis and
+  pack-opening threads no longer touch Tk widgets (stopping playback moved to
+  the main thread).
+
+### Changed
+
+- **Layout.** Detection settings moved from a permanent side panel into a
+  "Detect" menu; the clip inspector became a horizontal strip (frame preview,
+  speaker, start/end, a wide subtitle field) above a full-width list, so the
+  whole window fits a 1080p display at 125 % scaling with the log open.
+- Clips no longer carry an individual name; the speaker (track) name is the
+  label. `_TIMESTAMPS.txt` gained a speaker column.
+- The list selection is a neutral slate instead of the accent colour, so the
+  per-speaker text colours stay legible on the selected row.
+
 ## [1.0.1] - 2026-08-11
 
 ### Added

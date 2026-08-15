@@ -31,36 +31,51 @@ Entweder YouTube-Link einfügen oder eine lokale Datei wählen (MP4, MKV, MOV, W
 
 Dann **„Laden und analysieren"**. Das Tool lädt bzw. schneidet, extrahiert den Ton, trennt die Stimmen von Musik und Geräuschen und sucht selbst die Sprechabschnitte.
 
-**2. Clips prüfen**
+**„Pack weiterbearbeiten …"** lädt einen früher gebauten Pack wieder — Video, Backing-Track, Clips, Spuren und Untertitel —, damit du daran weiterarbeiten kannst. Packs aus älteren DubForge-Versionen gehen auch; ihre Clips werden aus den Dateinamen gelesen.
 
-Die Wellenform zeigt die gefundenen Clips als Kästen.
+**2. Clips und Spuren**
+
+Die Zeitleiste zeigt oben die Wellenform und darunter **eine Spur je Sprecher**. Erkannte Clips landen auf der ersten Spur; zieh sie auf andere Spuren. Zeilen, die sich überschneiden — jemand fällt ins Wort, zwei reden gleichzeitig — liegen einfach auf verschiedenen Spuren.
+
+**Benenne die Spuren nach dem Sprecher** (Doppelklick auf den Namen links, oder Rechtsklick fürs Menü). Der Name landet im Dateinamen des Clips, `03_Snake_5-460.wav` — genau daraus verteilt DisDubs die Rollen, und DubStage zeigt ihn als Beschriftung.
 
 | Aktion | Wie |
 |---|---|
-| Clip anhören | Doppelklick auf den Kasten |
-| Clip auswählen | einfacher Klick |
-| Anfang/Ende verschieben | Rand des Kastens ziehen |
-| Neuen Clip anlegen | in leerem Bereich aufziehen |
-| Umbenennen | Doppelklick in der Liste |
-| Zoomen | Mausrad über der Wellenform |
+| Clip anlegen | in einer Spur über leerem Bereich aufziehen |
+| Clip verschieben | ziehen — seitlich in der Zeit, hoch oder runter auf eine andere Spur |
+| Trimmen | linken oder rechten Rand ziehen |
+| Auswählen | anklicken, oder die Zeile in der Liste |
+| Anhören | Doppelklick auf den Clip, **Leertaste** oder der ▶-Knopf; Doppelklick auf die Wellenform spielt 8 s ab dort |
+| Feinjustieren | ← → (0,05 s), mit Shift 0,01 s, mit Strg 0,5 s |
+| Spur wechseln | ↑ ↓, oder das Feld „Sprecher / Spur" |
+| Teilen | **S** oder der Knopf — am Playhead, wenn er im Clip steht, sonst in der Mitte |
+| Duplizieren / löschen | Strg+D / Entf |
+| Rückgängig / wiederholen | Strg+Z / Strg+Y (auch die Knöpfe ↶ ↷) |
+| Zoomen | Strg + Mausrad an der Mausposition, Mausrad allein scrollt; Pos1 / Ende springen |
+| Spur hinzufügen | **+ Spur**, oder Klick auf die Zeile unter der letzten Spur |
+| Spur umbenennen, umfärben, sortieren, löschen | Rechtsklick auf den Spurnamen |
 
-Zu viele oder zu wenige Clips? **Empfindlichkeit** verstellen und **„Neu erkennen"**. Zu lange Clips? **Max. Cliplänge** runter und neu erkennen.
+Zu viele oder zu wenige Clips? **Erkennung ▾** öffnen, **Empfindlichkeit** oder **Max. Cliplänge** ändern und **„Jetzt neu erkennen"** wählen — das ersetzt alle Clips (Rückgängig holt sie zurück).
 
-**Untertitel:** Unter der Liste gibt es ein Feld dafür. Clip anklicken, Text tippen, **Enter** — das speichert und springt gleich zum nächsten Clip. So arbeitest du dich ohne Mausklicks durch. DubStage zeigt den Text später groß unter dem Video an. Freiwillig: Clips ohne Untertitel funktionieren normal.
+**Untertitel:** Clip anklicken, ins Untertitelfeld tippen, **Enter** — das speichert und springt gleich zum nächsten Clip. So arbeitest du dich ohne Mausklicks durch. Das kleine Bild links zeigt das Videobild am Clipanfang, damit du siehst, wer gerade spricht — und beim Anhören läuft dort das Video mit. Freiwillig: Clips ohne Untertitel funktionieren normal.
+
+Das Menü **Untertitel ▾** füllt sie auf Wunsch vor: aus einer SRT- oder VTT-Datei oder direkt von YouTube (die eigenen Untertitel des Videos, sonst die automatischen — die sind eher ein Rohentwurf). Die Cues werden über die Zeit den Clips zugeordnet; ob vorhandene Untertitel überschrieben werden, entscheidest du.
 
 **3. Bauen**
 
-Pack-Name eintragen, Häkchen bei **„Mit Video"** setzen (nötig für DubStage), dann **„Pack bauen"**. Der Pack landet im Ordner `packs` neben dem Tool — genau dort sucht DubStage. Über **„In Zielordner kopieren"** kannst du ihn zusätzlich woandershin legen.
+Pack-Name eintragen (und, wenn du magst, deinen Namen als Autor), Häkchen bei **„Mit Video"** setzen (nötig für DubStage und DisDubs), dann **„Pack bauen"**. Der Pack landet im Ordner `packs` neben dem Tool — genau dort sucht DubStage. **„Als ZIP für DisDubs"** packt ihn als `<Name>.zip`, fertig zum Hochladen. Über **„In Zielordner kopieren"** kannst du ihn zusätzlich woandershin legen.
 
 ## Was im Pack landet
 
 | Datei | Wofür |
 |---|---|
-| `01_Name_44-048.wav` | Ein Clip. Die Zahl hinten ist der Startzeitpunkt im Video (44,048 s) |
+| `01_Snake_44-048.wav` | Ein Clip. Der mittlere Teil ist der Spurname (Sprecher), die Zahl hinten der Startzeitpunkt im Video (44,048 s) |
 | `dub_video.mp4` | Das Video zur Szene |
 | `_backing_track.wav` | Musik und Geräusche ohne Stimmen |
 | `_captions.json` | Die Untertitel, nach Clip-Dateiname |
-| `_TIMESTAMPS.txt` | Übersicht aller Startzeiten samt Untertitel |
+| `_TIMESTAMPS.txt` | Übersicht aller Startzeiten, Sprecher und Untertitel |
+| `_pack_info.ini` | Titel und Autor — DisDubs liest das |
+| `_dubforge.json` | Das Projekt: Spuren, exakte Clipgrenzen, Untertitel. Damit kann DubForge den Pack wieder öffnen. DubStage und DisDubs ignorieren die Datei |
 | `_README.txt` | Kurzinfo |
 
 Alle Clips werden laut normalisiert (Peak −1 dBFS), damit beim Vergleich nicht die Lautstärke stört.

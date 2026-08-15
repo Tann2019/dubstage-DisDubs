@@ -17,9 +17,9 @@
 
 ## Screenshots
 
-**DubForge** — clip detection, waveform editor, subtitles
+**DubForge** — clip detection, one track per speaker, subtitles
 
-<img src="docs/dubforge.png" alt="DubForge: waveform editor with detected clips and subtitle field" width="900">
+<img src="docs/dubforge.png" alt="DubForge: timeline with speaker tracks, clip list and subtitle field" width="900">
 
 **DubStage** — recording a line, your take drawn live over the original
 
@@ -31,7 +31,7 @@
 
 ## What it does
 
-**DubForge** takes a YouTube link or a local video file, trims it to the span you want, separates the voices from music and noise, and finds the spoken segments on its own. You review the clips in a waveform editor, add subtitles, and build a pack.
+**DubForge** takes a YouTube link or a local video file, trims it to the span you want, separates the voices from music and noise, and finds the spoken segments on its own. You arrange the clips on a timeline with one track per speaker — overlapping lines simply go on different tracks — add subtitles (typed, from an SRT/VTT file, or fetched from YouTube), and build a pack. Packs can be reopened and edited later, and zipped for [DisDubs](https://github.com/Tann2019/DiscordDubs).
 
 **DubStage** plays a pack line by line. You hear the original, record over it as often as you like, and see your take drawn live on top of the original waveform — so you can tell whether your timing lands. At the end the whole scene plays back in your voice, and you can export it as MP4.
 
@@ -47,7 +47,8 @@ Requires Windows and Python 3.9+. The setup offers [Demucs](https://github.com/a
 
 ```
 DubForge   →  paste a link, set "From" and "To", "Load and analyse"
-           →  check the clips, type subtitles, "Build pack"
+           →  name the tracks after the speakers, sort the clips onto them,
+              type subtitles, "Build pack"  (or "Zip for DisDubs")
 DubStage   →  pick the pack, record line by line, "Done"
 ```
 
@@ -57,15 +58,17 @@ Packs land in `packs/` next to the tools, which is exactly where DubStage looks.
 
 ```
 packs/MyScene/
-  01_Hello_0-920.wav        clip, with its start time in the file name
-  02_Goodbye_4-120.wav
+  01_Snake_0-920.wav        clip: speaker (track name) and start time in the file name
+  02_Otacon_4-120.wav
   dub_video.mp4             the scene
   _backing_track.wav        music and noise without voices
   _captions.json            subtitles
   _TIMESTAMPS.txt           overview
+  _pack_info.ini            title and author
+  _dubforge.json            the project - lets DubForge reopen the pack
 ```
 
-The start time sits in the file name (`44-048` = 44.048 s), so a pack stays readable and editable without any database. DubStage also accepts `dub_video` as `.ogv`, `.mkv`, `.webm`, `.mov` or `.avi`.
+The speaker and the start time sit in the file name (`44-048` = 44.048 s), so a pack stays readable and editable without any database. DisDubs casts its parts from the speaker names. DubStage also accepts `dub_video` as `.ogv`, `.mkv`, `.webm`, `.mov` or `.avi`.
 
 ## How it works
 
@@ -76,6 +79,14 @@ Clips are loudness-normalised to −1 dBFS peak. The comparison normalises both 
 ## Languages
 
 The interface is available in German and English, switchable at runtime in the top right of either tool.
+
+## Tests
+
+```
+python -m unittest discover tests -v
+```
+
+Core tests run anywhere; the ffmpeg- and display-dependent ones (including a full analyse → build → reopen run with playback) skip themselves when ffmpeg or a display is missing.
 
 ## Documentation
 

@@ -82,6 +82,9 @@ _MSG = {
     "span": (
         "Zeitspanne: %.2f s",
         "Time span: %.2f s"),
+    "no_pack": (
+        "Kein Dub-Pack: %s\n(dub_video.* fehlt oder keine Clips mit Zeitstempel)",
+        "Not a dub pack: %s\n(no dub_video.* or no clips carrying a timestamp)"),
 }
 
 
@@ -673,3 +676,417 @@ def copy_pack(src_folder, target_dir, overwrite=True):
         shutil.rmtree(dest)
     shutil.copytree(src_folder, dest)
     return dest
+
+
+# --------------------------------------------------------------------------
+# Untertitel importieren / import subtitles (SRT, VTT)
+# --------------------------------------------------------------------------
+
+_SUB_TS_RE = re.compile(
+    r"(\d+):(\d{2}):(\d{2})[.,](\d{1,3})|(\d{1,2}):(\d{2})[.,](\d{1,3})")
+
+
+def _sub_ts(text):
+    m = _SUB_TS_RE.match(text.strip())
+    if not m:
+        return None
+    if m.group(1) is not None:
+        h, mi, s, ms = m.group(1), m.group(2), m.group(3), m.group(4)
+    else:
+        h, mi, s, ms = 0, m.group(5), m.group(6), m.group(7)
+    return int(h) * 3600 + int(mi) * 60 + int(s) + int(ms.ljust(3, "0")) / 1000.0
+
+
+def parse_subtitles(text):
+    """
+    Liest SRT oder WebVTT. Gibt [(start, end, text)] zurueck, sortiert.
+    YouTube-Auto-Untertitel wiederholen die vorige Zeile in jedem Cue -
+    davon bleibt nur die jeweils neue Zeile uebrig, Dubletten fallen weg.
+    Reads SRT or WebVTT into [(start, end, text)]. YouTube auto-captions
+    repeat the previous line in every cue; only the new line is kept.
+    """
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = text.lstrip("﻿")
+    is_vtt = text.lstrip().startswith("WEBVTT")
+    cues = []
+    block = []
+
+    def flush(block):
+        lines = [l for l in block if l.strip()]
+        idx = None
+        for i, l in enumerate(lines):
+            if "-->" in l:
+                idx = i
+                break
+        if idx is None:
+            return
+        left, right = lines[idx].split("-->", 1)
+        a = _sub_ts(left)
+        b = _sub_ts(right.split()[0]) if right.strip() else None
+        if a is None or b is None:
+            return
+        clean = []
+        for l in lines[idx + 1:]:
+            l = re.sub(r"<[^>]+>", "", l)          # <c>, <i>, Zeit-Tags
+            l = re.sub(r"\{\\[^}]*\}", "", l)      # ASS-Reste
+            l = (l.replace("&nbsp;", " ").replace("&amp;", "&")
+                  .replace("&lt;", "<").replace("&gt;", ">").strip())
+            if l:
+                clean.append(l)
+        if clean:
+            cues.append((a, b, clean))
+
+    def has_body(block):
+        seen = False
+        for l in block:
+            if seen and l.strip():
+                return True
+            if "-->" in l:
+                seen = True
+        return False
+
+    for raw in text.split("\n"):
+        # YouTube schreibt in Auto-Cues eine Zeile mit nur einem Leerzeichen
+        # VOR dem Text - die darf den Block nicht beenden.
+        # YouTube's auto cues carry a whitespace-only line before the text.
+        if raw == "" or (raw.strip() == "" and (not block or has_body(block))):
+            if block:
+                flush(block)
+                block = []
+        else:
+            block.append(raw)
+    if block:
+        flush(block)
+
+    out = []
+    rolling = (is_vtt and any(len(c[2]) > 1 for c in cues)
+               and any((c[1] - c[0]) < 0.02 for c in cues))
+    if rolling:
+        # Auto-Untertitel: rollende Anzeige. Die letzte Zeile ist die neue.
+        # Auto captions roll: the last line of each cue is the new one.
+        last = None
+        for a, b, lines in cues:
+            if b - a < 0.02:
+                continue
+            txt = lines[-1].strip()
+            if not txt or txt == last:
+                continue
+            last = txt
+            out.append((a, b, txt))
+    else:
+        last = None
+        for a, b, lines in cues:
+            txt = " ".join(lines).strip()
+            if not txt:
+                continue
+            if out and txt == last and a - out[-1][1] < 0.3:
+                out[-1] = (out[-1][0], b, txt)
+                continue
+            last = txt
+            out.append((a, b, txt))
+    out.sort(key=lambda c: c[0])
+    return out
+
+
+def read_subtitle_file(path):
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        return parse_subtitles(f.read())
+
+
+def fetch_youtube_subs(url, workdir, langs=("en", "de"), log=None):
+    """
+    Holt Untertitel von YouTube (echte bevorzugt, sonst automatische).
+    Gibt den Pfad der VTT-Datei zurueck oder None.
+    Fetches subtitles from YouTube (manual preferred, auto as fallback).
+    """
+    yt = ytdlp()
+    if not yt:
+        raise RuntimeError(M("no_ytdlp"))
+    outdir = os.path.join(workdir, "subs")
+    shutil.rmtree(outdir, ignore_errors=True)
+    os.makedirs(outdir, exist_ok=True)
+    pattern = ",".join("%s.*" % l for l in langs) + "," + ",".join(langs)
+    base = ["--no-playlist", "--skip-download", "--sub-format", "vtt/srt/best",
+            "--sub-langs", pattern, "-o", os.path.join(outdir, "subs.%(ext)s")]
+    run(list(yt) + base + ["--write-subs", url], log=log, check=False)
+    found = _pick_sub_file(outdir, langs)
+    if not found:
+        run(list(yt) + base + ["--write-auto-subs", url], log=log, check=False)
+        found = _pick_sub_file(outdir, langs)
+    return found
+
+
+def _pick_sub_file(outdir, langs):
+    files = [f for f in os.listdir(outdir)
+             if f.lower().endswith((".vtt", ".srt"))]
+    if not files:
+        return None
+
+    def rank(f):
+        low = f.lower()
+        for i, l in enumerate(langs):
+            if (".%s." % l) in low or (".%s-" % l) in low:
+                return i
+        return len(langs)
+    files.sort(key=rank)
+    return os.path.join(outdir, files[0])
+
+
+def assign_captions(clips, cues, offset=0.0, overwrite=False):
+    """
+    Verteilt Untertitel-Cues auf Clips nach zeitlicher Ueberlappung.
+    offset = Startzeit des Ausschnitts im Originalvideo.
+    Gibt die Anzahl geaenderter Clips zurueck.
+    Distributes cues over clips by overlap; returns how many changed.
+    """
+    changed = 0
+    for c in clips:
+        if c.get("caption") and not overwrite:
+            continue
+        a, b = c["start"] + offset, c["end"] + offset
+        parts = []
+        for ca, cb, txt in cues:
+            ov = min(b, cb) - max(a, ca)
+            if ov <= 0:
+                continue
+            mid_in = a <= (ca + cb) / 2.0 <= b
+            if mid_in or ov >= 0.5 * (cb - ca) or ov >= 0.5 * (b - a):
+                parts.append(txt)
+        cap = " ".join(parts).strip()
+        if cap and cap != c.get("caption", ""):
+            c["caption"] = cap
+            changed += 1
+    return changed
+
+
+# --------------------------------------------------------------------------
+# Videobild / frame preview
+# --------------------------------------------------------------------------
+
+def has_video_stream(path):
+    out = capture([ffprobe(), "-v", "error", "-select_streams", "v:0",
+                   "-show_entries", "stream=codec_type", "-of", "csv=p=0", path])
+    return "video" in out
+
+
+def extract_frame(video, seconds, out_png, width=320):
+    """Ein Standbild als PNG (Tk 8.6 zeigt PNG ohne Pillow an)."""
+    run([ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
+         "-ss", "%.3f" % max(0.0, float(seconds)), "-i", video,
+         "-frames:v", "1", "-vf", "scale=%d:-2" % int(width),
+         "-f", "image2", out_png])
+    return out_png
+
+
+# --------------------------------------------------------------------------
+# Projektdatei im Pack / project file inside the pack
+# --------------------------------------------------------------------------
+
+# Beginnt mit "_": DubStage und DisDubs ueberspringen die Datei.
+# Starts with "_": both DubStage and DisDubs skip it.
+PROJECT_FILE = "_dubforge.json"
+PACK_INFO_FILE = "_pack_info.ini"
+
+
+def write_project(folder, data):
+    with open(os.path.join(folder, PROJECT_FILE), "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+def read_project(folder):
+    path = os.path.join(folder, PROJECT_FILE)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def write_pack_info(folder, title, authors=None, subtitle=None):
+    """
+    _pack_info.ini im Choicer-Stil: DisDubs liest title, subtitle, authors.
+    Choicer-style _pack_info.ini: DisDubs reads title, subtitle and authors.
+    """
+    def q(s):
+        return '"%s"' % str(s).replace("\\", "\\\\").replace('"', '\\"')
+    lines = ["title=%s" % q(title)]
+    if subtitle:
+        lines.append("subtitle=%s" % q(subtitle))
+    authors = [a.strip() for a in (authors or []) if a and a.strip()]
+    if authors:
+        lines.append("authors=[%s]" % ", ".join(q(a) for a in authors))
+    with open(os.path.join(folder, PACK_INFO_FILE), "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+_TS_IN_NAME = re.compile(r"_(\d+)-(\d{1,3})$")
+
+
+def timestamp_from_name(filename):
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    m = _TS_IN_NAME.search(stem)
+    if not m:
+        return None
+    return float(m.group(1)) + float(m.group(2)) / (10 ** len(m.group(2)))
+
+
+def label_from_name(filename):
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    stem = _TS_IN_NAME.sub("", stem)
+    stem = re.sub(r"^\d+[_\-]", "", stem)
+    return stem.replace("_", " ").strip()
+
+
+def read_pack_for_edit(folder):
+    """
+    Liest einen fertigen Pack wieder ein, damit er weiterbearbeitet werden
+    kann. Mit _dubforge.json exakt, sonst aus den Dateinamen rekonstruiert.
+    Reads a built pack back for editing - exact with _dubforge.json,
+    otherwise reconstructed from the file names.
+    Gibt dict(video, backing, tracks, clips, meta) zurueck.
+    """
+    if not os.path.isdir(folder):
+        raise RuntimeError(M("no_pack", folder))
+    video = None
+    for ext in (".mp4", ".ogv", ".mkv", ".webm", ".mov", ".avi"):
+        cand = os.path.join(folder, "dub_video" + ext)
+        if os.path.isfile(cand):
+            video = cand
+            break
+    backing = None
+    for f in os.listdir(folder):
+        low = f.lower()
+        if low.startswith("_backing_track") and \
+                low.endswith((".wav", ".mp3", ".ogg", ".flac")):
+            backing = os.path.join(folder, f)
+            break
+
+    proj = read_project(folder)
+    captions = read_captions(folder)
+    tracks, clips = [], []
+    if proj and isinstance(proj.get("clips"), list):
+        tracks = [dict(t) for t in proj.get("tracks", []) if isinstance(t, dict)]
+        for c in proj["clips"]:
+            try:
+                clips.append({"start": float(c["start"]), "end": float(c["end"]),
+                              "track": int(c.get("track", 0)),
+                              "caption": str(c.get("caption", ""))})
+            except Exception:
+                continue
+    if not clips:
+        found = []
+        for f in sorted(os.listdir(folder)):
+            if f.startswith("_") or not f.lower().endswith(".wav"):
+                continue
+            ts = timestamp_from_name(f)
+            if ts is None:
+                continue
+            dur = probe_duration(os.path.join(folder, f))
+            found.append((ts, max(0.1, dur), label_from_name(f),
+                          captions.get(f, "")))
+        if not found:
+            raise RuntimeError(M("no_pack", folder))
+        names = []
+        for ts, dur, label, cap in found:
+            if label not in names:
+                names.append(label)
+        tracks = [{"name": n} for n in names]
+        for ts, dur, label, cap in found:
+            clips.append({"start": ts, "end": ts + dur,
+                          "track": names.index(label), "caption": cap})
+    if not tracks:
+        tracks = [{"name": "Voice"}]
+    for c in clips:
+        c["track"] = max(0, min(len(tracks) - 1, int(c.get("track", 0))))
+    clips.sort(key=lambda c: (c["start"], c["track"]))
+    meta = (proj or {}).get("meta") or {}
+    return {"video": video, "backing": backing, "tracks": tracks,
+            "clips": clips, "meta": meta}
+
+
+# --------------------------------------------------------------------------
+# Zip fuer DisDubs / zip for DisDubs
+# --------------------------------------------------------------------------
+
+def zip_pack(pack_folder, out_zip=None):
+    """
+    Packt den Pack-Ordner als <Name>.zip mit dem Ordner als oberster Ebene -
+    genau so nimmt DisDubs ihn beim Hochladen entgegen.
+    Zips the pack folder as <Name>.zip with the folder at the top level.
+    """
+    pack_folder = os.path.abspath(pack_folder)
+    root = os.path.dirname(pack_folder)
+    name = os.path.basename(pack_folder)
+    out_zip = out_zip or os.path.join(root, name + ".zip")
+    if os.path.exists(out_zip):
+        os.remove(out_zip)
+    base = out_zip[:-4] if out_zip.lower().endswith(".zip") else out_zip
+    made = shutil.make_archive(base, "zip", root_dir=root, base_dir=name)
+    if os.path.abspath(made) != os.path.abspath(out_zip):
+        os.replace(made, out_zip)
+    return out_zip
+
+
+# --------------------------------------------------------------------------
+# Wiedergabe / playback helpers
+# --------------------------------------------------------------------------
+
+def sounddevice():
+    """Gibt das sounddevice-Modul zurueck oder None / the module or None."""
+    try:
+        import sounddevice as sd
+        return sd
+    except Exception:
+        return None
+
+
+def decode_pcm(src, start, end, sr=44100, channels=2):
+    """
+    Dekodiert einen Ausschnitt als int16-PCM in den Speicher (numpy-Array
+    der Form (n, channels)); ohne numpy None.
+    Decodes a span to int16 PCM in memory; None without numpy.
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    dur = max(0.05, float(end) - float(start))
+    r = subprocess.run(
+        [ffmpeg(), "-hide_banner", "-loglevel", "error",
+         "-ss", "%.3f" % float(start), "-i", src, "-t", "%.3f" % dur,
+         "-f", "s16le", "-ac", str(channels), "-ar", str(sr), "-"],
+        capture_output=True, creationflags=_NOWINDOW)
+    if r.returncode != 0 or not r.stdout:
+        raise RuntimeError(M("cmd_failed", "ffmpeg",
+                             (r.stderr or b"").decode("utf-8", "replace")[-400:]))
+    data = np.frombuffer(r.stdout, dtype="<i2")
+    n = (len(data) // channels) * channels
+    return data[:n].reshape(-1, channels)
+
+
+def write_pcm_wav(path, data, sr=44100):
+    """Schreibt ein int16-Array (n, ch) als WAV / writes int16 (n, ch) as WAV."""
+    with wave.open(path, "wb") as w:
+        w.setnchannels(data.shape[1] if data.ndim > 1 else 1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(data.astype("<i2").tobytes())
+    return path
+
+
+def extract_frames_range(video, start, end, outdir, fps=10, width=224):
+    """
+    Standbilder eines Ausschnitts als PNG-Folge f001.png, f002.png ...
+    (fuer die bewegte Vorschau waehrend der Wiedergabe).
+    A PNG sequence for the span - the moving preview during playback.
+    """
+    os.makedirs(outdir, exist_ok=True)
+    dur = max(0.05, float(end) - float(start))
+    run([ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
+         "-ss", "%.3f" % max(0.0, float(start)), "-i", video, "-t", "%.3f" % dur,
+         "-vf", "fps=%d,scale=%d:-2" % (int(fps), int(width)),
+         "-f", "image2", os.path.join(outdir, "f%03d.png")])
+    return outdir

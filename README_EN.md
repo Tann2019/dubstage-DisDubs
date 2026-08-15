@@ -31,36 +31,51 @@ Either paste a YouTube link or pick a local file (MP4, MKV, MOV, WEBM, plain aud
 
 Then hit **"Load and analyse"**. The tool downloads or trims, extracts the audio, separates vocals from music and noise, and finds the spoken segments on its own.
 
-**2. Review the clips**
+**"Reopen a pack …"** loads a pack you built earlier — video, backing track, clips, tracks and subtitles — so you can keep editing it. Packs made with older DubForge versions open too; their clips are read from the file names.
 
-The waveform shows the detected clips as boxes.
+**2. Clips and tracks**
+
+The timeline shows the waveform on top and one **track per speaker** below it. Detected clips land on the first track; drag them onto other tracks, and lines that overlap — someone interrupting, two people talking at once — simply sit on different tracks.
+
+**Name the tracks after who speaks** (double-click the name on the left, or right-click for the menu). The name goes into the clip's file name, `03_Snake_5-460.wav`, which is what DisDubs uses to cast the parts, and what DubStage shows as the label.
 
 | Action | How |
 |---|---|
-| Listen to a clip | double-click the box |
-| Select a clip | single click |
-| Move start/end | drag the edge of the box |
-| Create a new clip | drag across an empty area |
-| Rename | double-click in the list |
-| Zoom | mouse wheel over the waveform |
+| Create a clip | drag across an empty area of a track |
+| Move a clip | drag it — sideways in time, up or down onto another track |
+| Trim | drag its left or right edge |
+| Select | click it, or click the row in the list |
+| Listen | double-click the clip, **Space**, or the ▶ button; double-click the waveform to hear 8 s from there |
+| Nudge | ← → (0.05 s), Shift for 0.01 s, Ctrl for 0.5 s |
+| Change track | ↑ ↓, or the "Speaker / track" box |
+| Split | **S**, or the button — splits at the playhead if it sits inside the clip, otherwise in the middle |
+| Duplicate / delete | Ctrl+D / Delete |
+| Undo / redo | Ctrl+Z / Ctrl+Y (also the ↶ ↷ buttons) |
+| Zoom | Ctrl + mouse wheel at the cursor, the wheel alone scrolls; Home / End jump |
+| Add a track | **+ Track**, or click the row under the last track |
+| Rename, recolour, reorder, delete a track | right-click the track name |
 
-Too many or too few clips? Adjust **Sensitivity** and hit **"Detect again"**. Clips too long? Lower **Max. clip length** and detect again.
+Too many or too few clips? Open **Detect ▾**, change **Sensitivity** or **Max. clip length** and choose **"Detect again now"** — this replaces all clips (Undo brings them back).
 
-**Subtitles:** There is a field for them below the list. Click a clip, type the text, press **Enter** — that saves it and jumps straight to the next clip, so you can work through everything without touching the mouse. DubStage later shows the text in large type under the video. Optional: clips without a subtitle work normally.
+**Subtitles:** click a clip, type in the subtitle field, press **Enter** — that saves it and jumps to the next clip, so you can work through everything without touching the mouse. The small picture on the left shows the frame at the clip's start, so you can see who is talking, and plays the video along while you listen to a clip. Optional: clips without a subtitle work normally.
+
+The **Subtitles ▾** menu can fill them in for you: from an SRT or VTT file, or straight from YouTube (the video's own subtitles if it has them, otherwise the automatic ones — treat those as a rough draft). Cues are matched to clips by time; you choose whether existing subtitles are overwritten.
 
 **3. Build**
 
-Enter a pack name, tick **"With video"** (required for DubStage), then **"Build pack"**. The pack lands in the `packs` folder next to the tool — exactly where DubStage looks. **"Copy to target folder"** puts a copy anywhere else you like.
+Enter a pack name (and your name as author, if you like), tick **"With video"** (required for DubStage and DisDubs), then **"Build pack"**. The pack lands in the `packs` folder next to the tool — exactly where DubStage looks. **"Zip for DisDubs"** wraps it as `<name>.zip`, ready to upload. **"Copy to target folder"** puts a copy anywhere else you like.
 
 ## What ends up in the pack
 
 | File | Purpose |
 |---|---|
-| `01_Name_44-048.wav` | One clip. The trailing number is its start time in the video (44.048 s) |
+| `01_Snake_44-048.wav` | One clip. The middle part is the track (speaker) name, the trailing number is its start time in the video (44.048 s) |
 | `dub_video.mp4` | The video for the scene |
 | `_backing_track.wav` | Music and noise without vocals |
 | `_captions.json` | The subtitles, keyed by clip file name |
-| `_TIMESTAMPS.txt` | Overview of all start times plus subtitles |
+| `_TIMESTAMPS.txt` | Overview of all start times, speakers and subtitles |
+| `_pack_info.ini` | Title and author — DisDubs reads these |
+| `_dubforge.json` | The project: tracks, exact clip bounds, subtitles. Lets DubForge reopen the pack. DubStage and DisDubs ignore it |
 | `_README.txt` | Short summary |
 
 All clips are normalised loud (peak −1 dBFS) so that loudness does not get in the way of the comparison.
