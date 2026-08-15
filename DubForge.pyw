@@ -88,6 +88,16 @@ T = {
                      "py -m pip install --upgrade yt-dlp",
                      "The update changed nothing. In a terminal:\n"
                      "py -m pip install --upgrade yt-dlp"),
+    "upd_same":     ("Die Version ist unveraendert: %s\n\n"
+                     "Meist liegt eine aeltere yt-dlp.exe im PATH und hat "
+                     "Vorrang vor der Installation, die pip erneuert hat. "
+                     "Welche Datei benutzt wird, steht im Protokoll - diese "
+                     "Datei entfernen oder direkt erneuern.",
+                     "The version has not changed: %s\n\n"
+                     "Usually an older yt-dlp.exe sits in PATH and takes "
+                     "precedence over the installation pip just updated. "
+                     "The log shows which file is in use - remove or update "
+                     "that file."),
     "dl_hint":      ("Der Download ist fehlgeschlagen. yt-dlp ist %d Tage alt - "
                      "sehr wahrscheinlich liegt es daran.",
                      "The download failed. yt-dlp is %d days old - that is "
@@ -918,13 +928,17 @@ class App(tk.Tk):
         ver, age = pc.ytdlp_version()
         self._ytdlp_age = age
         if ver and age is not None:
-            self._log(t("ytdlp_ver", ver, age))
+            yt = pc.ytdlp() or []
+            where = yt[0] if len(yt) == 1 else os.path.dirname(sys.executable)
+            self._log(t("ytdlp_ver", ver, age) + "   -   " + str(where))
             if age > 60:
                 self._log(t("ytdlp_old", age))
 
 
     def update_ytdlp(self):
         """Holt die aktuelle yt-dlp-Version nach."""
+        before = pc.ytdlp_version()[0]
+
         def work():
             self._set_status(t("st_upd"), 30)
             ver, age = pc.update_ytdlp(log=self._log)
@@ -934,9 +948,14 @@ class App(tk.Tk):
 
         def done():
             ver = getattr(self, "_new_ytdlp", None)
-            if ver:
+            if ver and ver != before:
                 self._log(t("upd_done", ver))
                 messagebox.showinfo(t("title"), t("upd_done", ver))
+            elif ver:
+                # Gleiche Version wie vorher - das ist fast immer eine
+                # aeltere Datei im PATH, die die pip-Installation verdeckt.
+                self._log(t("upd_same", ver))
+                messagebox.showwarning(t("title"), t("upd_same", ver))
             else:
                 messagebox.showwarning(t("title"), t("upd_fail"))
         self._bg(work, on_done=done)

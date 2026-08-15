@@ -82,6 +82,27 @@ _MSG = {
     "span": (
         "Zeitspanne: %.2f s",
         "Time span: %.2f s"),
+    "ytdlp_at": (
+        "Benutztes yt-dlp: %s",
+        "yt-dlp in use: %s"),
+    "ytdlp_mod": (
+        "Benutztes yt-dlp: Modul in %s",
+        "yt-dlp in use: module in %s"),
+    "ytdlp_self": (
+        "Eigenstaendige Datei - erneuert sich selbst.",
+        "Standalone file - updating itself."),
+    "ytdlp_wrap": (
+        "Das ist ein pip-Starter, kein eigenstaendiges Programm. "
+        "Ich nehme pip aus derselben Installation: %s",
+        "This is a pip launcher, not a standalone build. "
+        "Using pip from the same installation: %s"),
+    "ytdlp_shadow": (
+        "Achtung: pip hat %s aktualisiert, benutzt wird aber %s.\n"
+        "Die aeltere Datei liegt im PATH und hat Vorrang - entfernen oder "
+        "erneuern, sonst bleibt der alte Stand aktiv.",
+        "Note: pip updated %s, but %s is what actually runs.\n"
+        "The older file sits in PATH and wins - remove or update it, "
+        "otherwise the old version stays in charge."),
 }
 
 
@@ -171,17 +192,57 @@ def ytdlp_version():
         return ver, None
 
 
+def _python_beside(exe):
+    """Zu einem Scripts\\yt-dlp.exe den zugehoerigen Interpreter finden."""
+    d = os.path.dirname(exe)
+    for cand in (os.path.join(d, _exe("python")),
+                 os.path.join(os.path.dirname(d), _exe("python")),
+                 os.path.join(d, _exe("pythonw")),
+                 os.path.join(os.path.dirname(d), _exe("pythonw"))):
+        if os.path.isfile(cand):
+            return cand
+    return None
+
+
 def update_ytdlp(log=None):
     """
-    Aktualisiert yt-dlp. Als eigenstaendige Datei in tools/ kann es sich
-    selbst erneuern, ueber pip installiert muss pip ran.
+    Aktualisiert genau das yt-dlp, das beim Download auch wirklich laeuft.
+
+    Wichtig: pip erneuert nur die Installation des aufrufenden Interpreters.
+    Liegt eine eigenstaendige yt-dlp.exe im PATH, hat die Vorrang - dann
+    laeuft pip ins Leere und die Version aendert sich scheinbar nicht.
     """
-    local = os.path.join(TOOLS_DIR, _exe("yt-dlp"))
-    if os.path.isfile(local):
-        run([local, "-U"], log=log, check=False)
-    else:
+    yt = ytdlp()
+    if not yt:
         run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
             log=log, check=False)
+        return ytdlp_version()
+
+    if len(yt) == 1:                      # eigenstaendige Datei im PATH
+        exe = yt[0]
+        if log:
+            log(M("ytdlp_at", exe))
+            log(M("ytdlp_self"))
+        out = capture([exe, "-U"])
+        if log:
+            for line in out.splitlines():
+                if line.strip():
+                    log(line.rstrip())
+        # Ein von pip erzeugter Starter kann sich nicht selbst erneuern.
+        if re.search(r"package manager|not.*(standalone|binar)|"
+                     r"use that to update|pip.*install", out, re.I) \
+                or not out.strip():
+            py = _python_beside(exe) or sys.executable
+            if log:
+                log(M("ytdlp_wrap", py))
+            run([py, "-m", "pip", "install", "--upgrade", "yt-dlp"],
+                log=log, check=False)
+    else:                                 # als Modul der laufenden Python
+        if log:
+            log(M("ytdlp_mod", os.path.dirname(sys.executable)))
+        run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
+            log=log, check=False)
+
     return ytdlp_version()
 
 

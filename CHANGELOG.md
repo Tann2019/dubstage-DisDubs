@@ -34,6 +34,17 @@ Nothing yet.
 
 ### Fixed
 
+- **"Update yt-dlp" updated a different yt-dlp than the one that runs.** The
+  button always went through `pip` for the interpreter running DubForge, while
+  the version shown — and the binary actually used for downloads — comes from
+  `shutil.which`, which finds any `yt-dlp.exe` in `PATH` first. With both
+  present, pip reported success and nothing changed. The button now updates
+  whatever `ytdlp()` resolves to: a standalone build updates itself with `-U`,
+  a pip launcher falls back to pip from *its own* installation. The startup log
+  and the yt-dlp line now name the file in use, and if the version is unchanged
+  after an update the dialog says so and explains why instead of claiming
+  success.
+
 - **DubForge was unusable in a non-maximised window.** The three steps were
   packed straight into the window, so anything past the bottom edge — step 3,
   "Build pack", the progress bar and the log — was simply gone, with no way to
