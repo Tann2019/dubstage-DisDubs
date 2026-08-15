@@ -73,6 +73,19 @@ Video is never decoded during playback. Each pack is split into JPEG frames once
 
 Clips are loudness-normalised to −1 dBFS peak. The comparison normalises both curves to their own level, so what you judge is rhythm rather than volume.
 
+## Updates
+
+Both tools check GitHub on start — at most once every six hours — for a newer
+release. If there is one, a banner appears that names the version, expands to
+show that release's changelog, and can install it: the archive is downloaded and
+checked, the app closes, the files are replaced and it starts again. Your
+`packs/`, `dubs/`, `tools/` and settings are never touched, and the previous
+files are backed up to `%TEMP%` first.
+
+This is the only network access apart from downloading a video you asked for.
+Nothing is sent, no account is involved. To switch it off, set
+`"check_updates": false` in `dubforge_settings.json` or `dubstage_settings.json`.
+
 ## Languages
 
 The interface is available in German and English, switchable at runtime in the top right of either tool.

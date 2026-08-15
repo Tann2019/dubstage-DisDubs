@@ -7,6 +7,31 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.1.0] - 2026-08-15
+
+### Added
+
+- **Update notice inside both tools.** On start they ask GitHub once whether a
+  newer release exists — at most every six hours, and the answer is remembered
+  so the banner also appears when no request is made. The banner names the new
+  version, expands to show that release's changelog, and updates the tools on
+  one click: the archive is downloaded, checked, the app closes, the files are
+  replaced and the app starts again.
+- `packs/`, `dubs/`, `tools/` and the settings files are never touched by an
+  update. Only known project files are replaced, everything else in the archive
+  is discarded before the swap, and the previous `.pyw`, `.py`, `.bat` and `.md`
+  files are copied to a backup folder in `%TEMP%` first. A log of every step
+  lands next to it.
+- Guard rails on the way in: HTTPS only, GitHub hosts only, this repository
+  only, a size limit on the download, no archive paths pointing outside the
+  target folder, and every `.py`/`.pyw` from the archive is compiled before
+  anything is replaced — a truncated download cannot leave a broken install.
+- The check can be switched off by setting `"check_updates": false` in
+  `dubforge_settings.json` or `dubstage_settings.json`. Nothing but the release
+  information is ever requested, and nothing is sent.
+
 ### Fixed
 
 - **DubForge was unusable in a non-maximised window.** The three steps were
@@ -125,6 +150,7 @@ switchable at runtime.
   clip lengths it lands one sample short, which previously raised mid-playback
   and froze the interface.
 
-[Unreleased]: https://github.com/xmrius/dubstage/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/xmrius/dubstage/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/xmrius/dubstage/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/xmrius/dubstage/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/xmrius/dubstage/releases/tag/v1.0.0

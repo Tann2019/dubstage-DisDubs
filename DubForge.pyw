@@ -18,11 +18,13 @@ import traceback
 import tempfile
 import subprocess
 
+import webbrowser
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dubforge_core as pc
+import updater as upd
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(APP_DIR, "packs")
@@ -34,6 +36,8 @@ FG = "#e7e7ef"
 ACC = "#7c5cff"
 ACC2 = "#43d69a"
 WAVE = "#6f7ba8"
+BAN = "#332e5e"          # Update-Banner / update banner
+BAN_TXT = "#241f47"
 CLIP_FILL = "#2f4a6d"
 CLIP_SEL = "#7c5cff"
 
@@ -224,6 +228,39 @@ T = {
                      "_TIMESTAMPS.txt. Subtitles live in _captions.json.\n"),
     "type_dub":     ("Dub-Pack", "Dub pack"),
     "type_voice":   ("Clip-Pack", "Clip pack"),
+
+    # --- Update
+    "upd_head":     ("Version %s ist da", "Version %s is out"),
+    "upd_sub":      ("Du hast %s", "You have %s"),
+    "upd_more":     ("Was ist neu", "What's new"),
+    "upd_less":     ("Zuklappen", "Collapse"),
+    "upd_now":      ("Jetzt aktualisieren", "Update now"),
+    "upd_later":    ("Spaeter", "Later"),
+    "upd_page":     ("Auf GitHub", "On GitHub"),
+    "upd_nonotes":  ("Zu dieser Version wurde kein Text hinterlegt.",
+                     "No description was published for this version."),
+    "upd_ask_t":    ("Update einspielen?", "Install update?"),
+    "upd_ask":      ("DubForge und DubStage werden auf %s aktualisiert.\n\n"
+                     "Die App schliesst sich, die Dateien werden getauscht "
+                     "und die App startet neu.\n"
+                     "Packs, Aufnahmen und Einstellungen bleiben unberuehrt.\n\n"
+                     "Fortfahren?",
+                     "DubForge and DubStage will be updated to %s.\n\n"
+                     "The app closes, the files are replaced and the app "
+                     "starts again.\n"
+                     "Packs, recordings and settings are left untouched.\n\n"
+                     "Continue?"),
+    "upd_dl":       ("Lade %s ... %d%%", "Downloading %s ... %d%%"),
+    "upd_check":    ("Pruefe das Archiv ...", "Checking the archive ..."),
+    "upd_swap":     ("Tausche Dateien - die App startet gleich neu ...",
+                     "Replacing files - the app will restart shortly ..."),
+    "upd_fail_t":   ("Update fehlgeschlagen", "Update failed"),
+    "upd_fail":     ("Es hat nicht geklappt:\n\n%s\n\n"
+                     "Du kannst die Version auch von Hand von der "
+                     "Release-Seite laden.",
+                     "It did not work:\n\n%s\n\n"
+                     "You can also download the version by hand from the "
+                     "release page."),
 }
 
 
@@ -287,6 +324,11 @@ class App(tk.Tk):
         self._ytdlp_age = None
         self.built_path = None
 
+        self.upd_info = None        # gefundenes Release / found release
+        self.upd_open = False       # Changelog aufgeklappt?
+        self.upd_busy = False
+        self.upd_dismissed = False
+
         self.view_a = 0.0
         self.view_b = 1.0
         self._drag = None
@@ -304,6 +346,7 @@ class App(tk.Tk):
         self.after(80, self._pump)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._check_tools()
+        self.after(1200, self._check_update)
 
     # -------------------------------------------------- Variablen (einmalig)
     def _init_vars(self):
@@ -378,6 +421,14 @@ class App(tk.Tk):
         s.map("Treeview", background=[("selected", ACC)])
         s.configure("TProgressbar", background=ACC2, troughcolor=BG2,
                     borderwidth=0)
+        s.configure("Ban.TFrame", background=BAN)
+        s.configure("Ban.TLabel", background=BAN, foreground=FG)
+        s.configure("BanHead.TLabel", background=BAN, foreground="#ffffff",
+                    font=("Segoe UI Semibold", 11))
+        s.configure("BanDim.TLabel", background=BAN, foreground="#b6b1dc")
+        s.configure("Ban.TButton", background="#4b4590", foreground=FG,
+                    padding=6, borderwidth=0)
+        s.map("Ban.TButton", background=[("active", "#5d56ad")])
         s.configure("Vertical.TScrollbar", background="#3a3d4d",
                     troughcolor=BG2, bordercolor=BG2, arrowcolor=FG,
                     darkcolor=BG2, lightcolor=BG2, borderwidth=0)
@@ -396,7 +447,17 @@ class App(tk.Tk):
 
         # Der Inhalt liegt in einem Canvas mit Scrollbalken. Ohne das war
         # Schritt 3 bei nicht maximiertem Fenster schlicht nicht erreichbar.
-        host = ttk.Frame(self)
+        outer = ttk.Frame(self)
+        outer.pack(fill="both", expand=True)
+        self.ui_root = outer
+
+        # Das Update-Banner liegt bewusst ausserhalb des Scrollbereichs,
+        # damit es nicht weggescrollt werden kann.
+        self.banner = ttk.Frame(outer, style="Ban.TFrame")
+        self.upd_text = None
+        self.upd_status = None
+
+        host = ttk.Frame(outer)
         host.pack(fill="both", expand=True)
         self.scroll_host = host
 
@@ -598,6 +659,8 @@ class App(tk.Tk):
 
         self._sync_src()
         self.after_idle(self._scroll_geom)
+        if self.upd_info:
+            self._show_banner()
 
     # ------------------------------------------------------------- Scrollen
     def _scroll_geom(self, _e=None):
@@ -634,7 +697,8 @@ class App(tk.Tk):
                     return                       # Spinbox zaehlt selbst
             except Exception:
                 pass
-            if w is getattr(self, "tree", None) or w is getattr(self, "log", None):
+            if w in (getattr(self, "tree", None), getattr(self, "log", None),
+                     getattr(self, "upd_text", None)) and w is not None:
                 first, last = w.yview()
                 if (step < 0 and first > 0.0) or (step > 0 and last < 1.0):
                     return                       # hat noch Weg
@@ -650,6 +714,138 @@ class App(tk.Tk):
         except Exception:
             pass
 
+    # ---------------------------------------------------------- Update
+    def _check_update(self):
+        """Beim Start nachsehen, ob es etwas Neues gibt."""
+        # Zuerst der zuletzt gemerkte Stand - dann steht das Banner sofort,
+        # auch wenn gerade nicht nachgefragt wird.
+        cache = self.cfg.get("upd_cache") or {}
+        if cache.get("tag") and upd.is_newer(cache["tag"]):
+            self.upd_info = cache
+            self._show_banner()
+
+        if not upd.due(self.cfg):
+            return
+
+        def work():
+            try:
+                info = upd.check_latest()
+            except Exception:
+                return                      # kein Netz, kein Drama
+            self.msgq.put(("update", info))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _show_banner(self):
+        info = self.upd_info
+        b = getattr(self, "banner", None)
+        if b is None:
+            return
+        for c in b.winfo_children():
+            c.destroy()
+        self.upd_text = None
+        self.upd_status = None
+        if not info or self.upd_dismissed:
+            b.pack_forget()
+            return
+
+        head = ttk.Frame(b, style="Ban.TFrame", padding=(12, 8))
+        head.pack(fill="x")
+        ttk.Label(head, text=t("upd_head", info.get("version", "?")),
+                  style="BanHead.TLabel").pack(side="left")
+        ttk.Label(head, text="    " + t("upd_sub", upd.VERSION),
+                  style="BanDim.TLabel").pack(side="left")
+
+        ttk.Button(head, text=t("upd_later"), style="Ban.TButton",
+                   command=self._hide_banner).pack(side="right", padx=(6, 0))
+        ttk.Button(head, text=t("upd_page"), style="Ban.TButton",
+                   command=lambda: webbrowser.open(
+                       info.get("page") or upd.RELEASES_PAGE)
+                   ).pack(side="right", padx=6)
+        self.upd_go = ttk.Button(head, text=t("upd_now"), style="Go.TButton",
+                                 command=self._do_update)
+        self.upd_go.pack(side="right", padx=6)
+        ttk.Button(head, text=t("upd_less") if self.upd_open else t("upd_more"),
+                   style="Ban.TButton",
+                   command=self._toggle_notes).pack(side="right")
+
+        if self.upd_open:
+            body = ttk.Frame(b, style="Ban.TFrame", padding=(12, 0, 12, 10))
+            body.pack(fill="x")
+            txt = tk.Text(body, height=12, wrap="word", bg=BAN_TXT,
+                          fg="#ded9ff", relief="flat", padx=10, pady=8,
+                          highlightthickness=0, font=("Segoe UI", 9))
+            txt.insert("1.0", upd.plain_notes(info.get("notes"))
+                       or t("upd_nonotes"))
+            txt.configure(state="disabled")
+            txt.pack(side="left", fill="both", expand=True)
+            sb = ttk.Scrollbar(body, orient="vertical", command=txt.yview)
+            sb.pack(side="left", fill="y")
+            txt.configure(yscrollcommand=sb.set)
+            self.upd_text = txt
+
+        self.upd_status = ttk.Label(b, text="", style="BanDim.TLabel",
+                                    padding=(12, 0, 12, 8))
+        if self.upd_busy:
+            self.upd_status.pack(fill="x")
+
+        b.pack(side="top", fill="x", before=self.scroll_host)
+
+    def _toggle_notes(self):
+        self.upd_open = not self.upd_open
+        self._show_banner()
+
+    def _hide_banner(self):
+        self.upd_dismissed = True
+        self._show_banner()
+
+    def _upd_say(self, text):
+        if self.upd_status is None:
+            return
+        self.upd_status.configure(text=text)
+        if not self.upd_status.winfo_ismapped():
+            self.upd_status.pack(fill="x")
+
+    def _do_update(self):
+        info = self.upd_info
+        if not info or self.upd_busy:
+            return
+        if not info.get("zip"):
+            webbrowser.open(info.get("page") or upd.RELEASES_PAGE)
+            return
+        if not messagebox.askyesno(t("upd_ask_t"),
+                                   t("upd_ask", info.get("tag", "?"))):
+            return
+
+        self.upd_busy = True
+        try:
+            self.upd_go.configure(state="disabled")
+        except Exception:
+            pass
+        self._upd_say(t("upd_dl", info.get("tag", "?"), 0))
+
+        def work():
+            wd = tempfile.mkdtemp(prefix="dubstage_upd_")
+            try:
+                zp = os.path.join(wd, "release.zip")
+
+                def prog(done, total):
+                    pct = int(done * 100 / total) if total else 0
+                    self.msgq.put(("upd_say",
+                                   t("upd_dl", info.get("tag", "?"), pct)))
+
+                upd.download_zip(info["zip"], zp, progress=prog)
+                self.msgq.put(("upd_say", t("upd_check")))
+                root = upd.stage(zp, os.path.join(wd, "neu"))
+                self.msgq.put(("upd_say", t("upd_swap")))
+                upd.apply(root, APP_DIR, which="DubForge",
+                          tag=info.get("tag", ""))
+                self.msgq.put(("upd_quit", None))
+            except Exception as e:
+                self.msgq.put(("upd_error", "%s" % e))
+
+        threading.Thread(target=work, daemon=True).start()
+
     # -------------------------------------------------------- Sprachwechsel
     def _change_lang(self, _e=None):
         code = "en" if self.lang_var.get().startswith("English") else "de"
@@ -659,7 +855,7 @@ class App(tk.Tk):
         set_lang(code)
         self.cfg["lang"] = code
         save_cfg(self.cfg)
-        self.scroll_host.destroy()
+        self.ui_root.destroy()
         self._build_ui()
         if keep.strip():
             self.log.insert("end", keep + "\n")
@@ -772,6 +968,26 @@ class App(tk.Tk):
                 elif kind == "error":
                     self._set_busy(False)
                     messagebox.showerror(t("dlg_err"), payload)
+                elif kind == "update":
+                    upd.note_checked(self.cfg)
+                    self.cfg["upd_cache"] = payload
+                    save_cfg(self.cfg)
+                    if payload.get("newer") and not self.upd_dismissed:
+                        self.upd_info = payload
+                        self._show_banner()
+                elif kind == "upd_say":
+                    self._upd_say(payload)
+                elif kind == "upd_quit":
+                    self._upd_say(t("upd_swap"))
+                    self.after(700, self._on_close)
+                elif kind == "upd_error":
+                    self.upd_busy = False
+                    try:
+                        self.upd_go.configure(state="normal")
+                    except Exception:
+                        pass
+                    self._upd_say("")
+                    messagebox.showerror(t("upd_fail_t"), t("upd_fail", payload))
         except queue.Empty:
             pass
         self.after(80, self._pump)

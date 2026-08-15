@@ -11,8 +11,11 @@ import sys
 import json
 import time
 import queue
+import textwrap
+import tempfile
 import threading
 import traceback
+import webbrowser
 
 import numpy as np
 import tkinter as tk
@@ -21,6 +24,7 @@ from tkinter import ttk, messagebox, filedialog
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dubforge_core as pc
 import dubstage_core as ds
+import updater as upd
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CFG_PATH = os.path.join(APP_DIR, "dubstage_settings.json")
@@ -47,6 +51,8 @@ TEAL_HI = "#4ee5bb"
 RED = "#ff4f6d"
 RED_HI = "#ff7b92"
 GOLD = "#ffc861"
+BAN = "#332e5e"          # Update-Banner / update banner
+BAN_TXT = "#241f47"
 WAVE_ORIG = "#3c4470"          # Silhouette des Originals
 WAVE_ORIG_TXT = "#7079ad"
 
@@ -128,6 +134,38 @@ T = {
                    "Back to the menu? The takes will be lost."),
     "err":        ("Fehler", "Error"),
     "quiet_hint": ("sehr leise - lauter sprechen", "very quiet - speak up"),
+
+    # --- Update
+    "upd_head":   ("Version %s ist da", "Version %s is out"),
+    "upd_sub":    ("Du hast %s", "You have %s"),
+    "upd_more":   ("Was ist neu", "What's new"),
+    "upd_less":   ("Zuklappen", "Collapse"),
+    "upd_now":    ("Aktualisieren", "Update"),
+    "upd_later":  ("Spaeter", "Later"),
+    "upd_nonotes": ("Zu dieser Version wurde kein Text hinterlegt.",
+                    "No description was published for this version."),
+    "upd_ask_t":  ("Update einspielen?", "Install update?"),
+    "upd_ask":    ("DubForge und DubStage werden auf %s aktualisiert.\n\n"
+                   "Die App schliesst sich, die Dateien werden getauscht "
+                   "und die App startet neu.\n"
+                   "Packs, Aufnahmen und Einstellungen bleiben unberuehrt.\n\n"
+                   "Fortfahren?",
+                   "DubForge and DubStage will be updated to %s.\n\n"
+                   "The app closes, the files are replaced and the app "
+                   "starts again.\n"
+                   "Packs, recordings and settings are left untouched.\n\n"
+                   "Continue?"),
+    "upd_dl":     ("Lade ... %d%%", "Downloading ... %d%%"),
+    "upd_check":  ("Pruefe das Archiv ...", "Checking the archive ..."),
+    "upd_swap":   ("Tausche Dateien - gleich geht es weiter ...",
+                   "Replacing files - back in a moment ..."),
+    "upd_fail_t": ("Update fehlgeschlagen", "Update failed"),
+    "upd_fail":   ("Es hat nicht geklappt:\n\n%s\n\n"
+                   "Du kannst die Version auch von Hand von der "
+                   "Release-Seite laden.",
+                   "It did not work:\n\n%s\n\n"
+                   "You can also download the version by hand from the "
+                   "release page."),
 }
 
 
@@ -273,6 +311,15 @@ class Game(tk.Tk):
         self.buttons = []
         self.chips = []
 
+        self.upd_info = None          # gefundenes Release / found release
+        self.upd_open = False         # Changelog aufgeklappt?
+        self.upd_busy = False
+        self.upd_dismissed = False
+        self.upd_sub_item = None
+        self.upd_scroll = 0           # Zeile oben im Changelog
+        self.upd_maxscroll = 0
+        self.upd_rect = None          # Flaeche des Changelog-Feldes
+
         self.cv = tk.Canvas(self, bg=BG_BOT, highlightthickness=0)
         self.cv.pack(fill="both", expand=True)
         self.cv.bind("<Configure>", self._on_resize)
@@ -285,6 +332,7 @@ class Game(tk.Tk):
         self._style()
         self.after(50, self.show_menu)
         self.after(60, self._pump)
+        self.after(1400, self._check_update)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _style(self):
@@ -394,6 +442,15 @@ class Game(tk.Tk):
     def _on_wheel(self, e):
         if self.screen != "menu":
             return
+        step = -1 if e.delta > 0 else 1
+        # Ueber dem Changelog blaettert das Rad im Changelog.
+        r = self.upd_rect
+        if r and r[0] <= e.x <= r[2] and r[1] <= e.y <= r[3]:
+            new = max(0, min(self.upd_maxscroll, self.upd_scroll + step * 3))
+            if new != self.upd_scroll:
+                self.upd_scroll = new
+                self.show_menu()
+            return
         self.menu_scroll = max(0, self.menu_scroll - (1 if e.delta > 0 else -1))
         self.show_menu()
 
@@ -444,13 +501,15 @@ class Game(tk.Tk):
         self._btn(w - 120, 26, 46, 28, "", lambda: self._set_lang("de"), "flat")
         self._btn(w - 68, 26, 46, 28, "", lambda: self._set_lang("en"), "flat")
 
-        cv.create_text(70, 168, text=t("pick"), fill=TXT, anchor="w",
+        off = self._draw_update_banner(cv, w, h)
+
+        cv.create_text(70, 168 + off, text=t("pick"), fill=TXT, anchor="w",
                        font=("Segoe UI Semibold", 14))
 
         # ---- Pack-Karten
         list_x0, list_x1 = 70, w - 70
         card_h, gap = 74, 12
-        top = 196
+        top = 196 + off
         avail = h - top - 210
         per_page = max(1, int(avail // (card_h + gap)))
         self.menu_scroll = max(0, min(self.menu_scroll,
@@ -529,6 +588,147 @@ class Game(tk.Tk):
         start.set_enabled(bool(self.packs) and self.mic.available and HAVE_PIL)
         self.status_item = cv.create_text(w / 2, by + 22, text="", fill=DIM,
                                           font=("Segoe UI", 10))
+
+    # ==================================================================
+    #  UPDATE
+    # ==================================================================
+    def _draw_update_banner(self, cv, w, h):
+        """Banner im Menue. Gibt zurueck, um wieviel alles darunter rutscht."""
+        info = self.upd_info
+        self.upd_rect = None
+        self.upd_sub_item = None
+        if not info or self.upd_dismissed:
+            return 0
+
+        x0, x1 = 70, w - 70
+        y0 = 140
+        strip = 62
+        notes_h = 0
+        if self.upd_open:
+            # nie so hoch, dass von der Packliste nichts mehr uebrig bleibt
+            notes_h = max(70, min(190, h - 560))
+        bh = strip + (notes_h + 12 if self.upd_open else 0)
+
+        round_rect(cv, x0, y0, x1, y0 + bh, r=16, fill=BAN, outline=ACC)
+        cv.create_text(x0 + 24, y0 + 22, anchor="w",
+                       text=t("upd_head", info.get("version", "?")),
+                       fill="#ffffff", font=("Segoe UI Semibold", 13))
+        self.upd_sub_item = cv.create_text(
+            x0 + 24, y0 + 44, anchor="w",
+            text=t("upd_sub", upd.VERSION), fill="#b6b1dc",
+            font=("Segoe UI", 10))
+
+        # Knoepfe von rechts nach links
+        bx = x1 - 22
+        for label, cmd, style, bw in (
+                (t("upd_later"), self._hide_banner, "flat", 92),
+                (t("upd_now"), self._do_update, "go", 150),
+                (t("upd_less") if self.upd_open else t("upd_more"),
+                 self._toggle_notes, "ghost", 140)):
+            bx -= bw
+            b = self._btn(bx, y0 + 15, bw, 32, label, cmd, style)
+            if style == "go" and self.upd_busy:
+                b.set_enabled(False)
+            bx -= 8
+
+        self.upd_rect = None
+        if self.upd_open:
+            ny = y0 + strip
+            round_rect(cv, x0 + 16, ny, x1 - 16, ny + notes_h, r=12,
+                       fill=BAN_TXT, outline="")
+            text = upd.plain_notes(info.get("notes")) or t("upd_nonotes")
+            # Der Canvas bricht selbst um, blaettern muessen wir selbst.
+            cols = max(20, int((x1 - x0 - 68) / 6.9))
+            rows = max(3, int((notes_h - 18) / 17))
+            lines = []
+            for para in text.split("\n"):
+                lines.extend(textwrap.wrap(para, cols) or [""])
+
+            top_line = max(0, min(self.upd_scroll, max(0, len(lines) - rows)))
+            self.upd_scroll = top_line
+            self.upd_rect = (x0 + 16, ny, x1 - 16, ny + notes_h)
+            self.upd_maxscroll = max(0, len(lines) - rows)
+
+            cv.create_text(x0 + 32, ny + 10, anchor="nw",
+                           text="\n".join(lines[top_line:top_line + rows]),
+                           fill="#ded9ff", font=("Segoe UI", 10),
+                           justify="left", width=x1 - x0 - 64)
+            if self.upd_maxscroll:
+                cv.create_text(x1 - 30, ny + notes_h - 12, anchor="se",
+                               text="%d / %d  -  Mausrad"
+                                    % (top_line + rows, len(lines)),
+                               fill="#8c86bb", font=("Segoe UI", 8))
+        return bh + 16
+
+    def _check_update(self):
+        cache = self.cfg.get("upd_cache") or {}
+        if cache.get("tag") and upd.is_newer(cache["tag"]):
+            self.upd_info = cache
+            if self.screen == "menu":
+                self.show_menu()
+        if not upd.due(self.cfg):
+            return
+
+        def work():
+            try:
+                info = upd.check_latest()
+            except Exception:
+                return                      # kein Netz, kein Drama
+            self.msgq.put(("update", info))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _toggle_notes(self):
+        self.upd_open = not self.upd_open
+        self.show_menu()
+
+    def _hide_banner(self):
+        self.upd_dismissed = True
+        self.show_menu()
+
+    def _upd_say(self, text):
+        if self.upd_sub_item is None:
+            return
+        try:
+            self.cv.itemconfigure(self.upd_sub_item, text=text, fill=GOLD)
+        except Exception:
+            pass
+
+    def _do_update(self):
+        info = self.upd_info
+        if not info or self.upd_busy:
+            return
+        if not info.get("zip"):
+            webbrowser.open(info.get("page") or upd.RELEASES_PAGE)
+            return
+        if not messagebox.askyesno(t("upd_ask_t"),
+                                   t("upd_ask", info.get("tag", "?"))):
+            return
+
+        self.upd_busy = True
+        self.show_menu()
+        self._upd_say(t("upd_dl", 0))
+
+        def work():
+            wd = tempfile.mkdtemp(prefix="dubstage_upd_")
+            try:
+                zp = os.path.join(wd, "release.zip")
+
+                def prog(done, total):
+                    pct = int(done * 100 / total) if total else 0
+                    self.msgq.put(("upd_say", t("upd_dl", pct)))
+
+                upd.download_zip(info["zip"], zp, progress=prog)
+                self.msgq.put(("upd_say", t("upd_check")))
+                root = upd.stage(zp, os.path.join(wd, "neu"))
+                self.msgq.put(("upd_say", t("upd_swap")))
+                upd.apply(root, APP_DIR, which="DubStage",
+                          tag=info.get("tag", ""))
+                self.msgq.put(("upd_quit", None))
+            except Exception as e:
+                self.msgq.put(("upd_error", "%s" % e))
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _set_lang(self, code):
         if code == LANG:
@@ -1435,6 +1635,23 @@ class Game(tk.Tk):
                 elif kind == "error":
                     messagebox.showerror(t("err"), payload)
                     self.show_menu()
+                elif kind == "update":
+                    upd.note_checked(self.cfg)
+                    self.cfg["upd_cache"] = payload
+                    save_cfg(self.cfg)
+                    if payload.get("newer") and not self.upd_dismissed:
+                        self.upd_info = payload
+                        if self.screen == "menu":
+                            self.show_menu()
+                elif kind == "upd_say":
+                    self._upd_say(payload)
+                elif kind == "upd_quit":
+                    self._upd_say(t("upd_swap"))
+                    self.after(700, self._on_close)
+                elif kind == "upd_error":
+                    self.upd_busy = False
+                    self.show_menu()
+                    messagebox.showerror(t("upd_fail_t"), t("upd_fail", payload))
         except queue.Empty:
             pass
         # Notbremse: haengt eine Phase laenger als erwartet, aufraeumen.
