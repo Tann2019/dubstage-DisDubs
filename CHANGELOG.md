@@ -34,6 +34,14 @@ Nothing yet.
 
 ### Fixed
 
+- **YouTube downloads failed with HTTP 403 on newer ffmpeg builds.** With
+  `--download-sections`, yt-dlp hands the video URL to ffmpeg and lets it fetch
+  the data; that request does not carry what the URL was signed for, and Google
+  refuses it. DubForge now falls back to downloading the whole video with
+  yt-dlp's own downloader and cutting it locally with the existing trim path —
+  slower, but it works regardless of the ffmpeg build. The fast section
+  download is still tried first.
+
 - **"Update yt-dlp" updated a different yt-dlp than the one that runs.** The
   button always went through `pip` for the interpreter running DubForge, while
   the version shown — and the binary actually used for downloads — comes from

@@ -99,9 +99,11 @@ T = {
                      "The log shows which file is in use - remove or update "
                      "that file."),
     "dl_hint":      ("Der Download ist fehlgeschlagen. yt-dlp ist %d Tage alt - "
-                     "sehr wahrscheinlich liegt es daran.",
-                     "The download failed. yt-dlp is %d days old - that is "
-                     "very likely the cause."),
+                     "das koennte die Ursache sein, wenn oben ein Fehler beim "
+                     "Auslesen der Seite steht.",
+                     "The download failed. yt-dlp is %d days old - that may be "
+                     "the cause if the log shows an error while reading the "
+                     "page."),
     "demucs_hint":  ("Erster Lauf mit Demucs dauert laenger (Modell wird geladen).",
                      "The first Demucs run takes longer (the model is downloaded)."),
 
