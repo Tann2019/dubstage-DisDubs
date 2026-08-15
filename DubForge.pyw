@@ -260,8 +260,12 @@ class App(tk.Tk):
         self.cfg = load_cfg()
         set_lang(self.cfg.get("lang", "de"))
 
-        self.geometry("1180x880")
-        self.minsize(980, 740)
+        # Fensterhoehe an den Bildschirm anpassen - auf einem 1080p-Schirm
+        # bleiben nach Taskleiste und Titelzeile keine 880 Pixel uebrig.
+        sh = self.winfo_screenheight()
+        self.geometry("1180x%d" % min(880, max(560, sh - 130)))
+        # Klein darf es werden: der Inhalt scrollt jetzt.
+        self.minsize(900, 480)
         self.configure(bg=BG)
 
         self.msgq = queue.Queue()
@@ -292,6 +296,11 @@ class App(tk.Tk):
         self._build_style()
         self._init_vars()
         self._build_ui()
+        # Mausrad global: die Seite scrollt, ausser ueber Widgets, die
+        # selbst scrollen (siehe _wheel).
+        self.bind("<MouseWheel>", self._wheel)
+        self.bind("<Button-4>", self._wheel)
+        self.bind("<Button-5>", self._wheel)
         self.after(80, self._pump)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._check_tools()
@@ -369,6 +378,14 @@ class App(tk.Tk):
         s.map("Treeview", background=[("selected", ACC)])
         s.configure("TProgressbar", background=ACC2, troughcolor=BG2,
                     borderwidth=0)
+        s.configure("Vertical.TScrollbar", background="#3a3d4d",
+                    troughcolor=BG2, bordercolor=BG2, arrowcolor=FG,
+                    darkcolor=BG2, lightcolor=BG2, borderwidth=0)
+        s.map("Vertical.TScrollbar", background=[("active", "#4a4e63")])
+        s.configure("Horizontal.TScrollbar", background="#3a3d4d",
+                    troughcolor=BG2, bordercolor=BG2, arrowcolor=FG,
+                    darkcolor=BG2, lightcolor=BG2, borderwidth=0)
+        s.map("Horizontal.TScrollbar", background=[("active", "#4a4e63")])
         s.configure("TLabelframe", background=BG, foreground=ACC2)
         s.configure("TLabelframe.Label", background=BG, foreground=ACC2,
                     font=("Segoe UI Semibold", 10))
@@ -376,9 +393,27 @@ class App(tk.Tk):
 
     def _build_ui(self):
         self.title(t("title"))
-        root = ttk.Frame(self, padding=10)
-        root.pack(fill="both", expand=True)
+
+        # Der Inhalt liegt in einem Canvas mit Scrollbalken. Ohne das war
+        # Schritt 3 bei nicht maximiertem Fenster schlicht nicht erreichbar.
+        host = ttk.Frame(self)
+        host.pack(fill="both", expand=True)
+        self.scroll_host = host
+
+        # yscrollincrement macht das Mausrad berechenbar: 3 Einheiten = 60 px
+        self.vcanvas = tk.Canvas(host, bg=BG, highlightthickness=0, takefocus=0,
+                                 yscrollincrement=20)
+        self.vcanvas.pack(side="left", fill="both", expand=True)
+        vbar = ttk.Scrollbar(host, orient="vertical", command=self.vcanvas.yview)
+        vbar.pack(side="right", fill="y")
+        self.vcanvas.configure(yscrollcommand=vbar.set)
+
+        root = ttk.Frame(self.vcanvas, padding=10)
+        self._root_win = self.vcanvas.create_window((0, 0), window=root,
+                                                    anchor="nw")
         self.root_frame = root
+        root.bind("<Configure>", self._scroll_geom)
+        self.vcanvas.bind("<Configure>", self._scroll_geom)
 
         # ---------------- Kopfzeile mit Sprachwahl
         top = ttk.Frame(root)
@@ -562,6 +597,58 @@ class App(tk.Tk):
         self.log.configure(yscrollcommand=lsb.set)
 
         self._sync_src()
+        self.after_idle(self._scroll_geom)
+
+    # ------------------------------------------------------------- Scrollen
+    def _scroll_geom(self, _e=None):
+        """Inhaltsbreite ans Fenster koppeln, Hoehe mitwachsen lassen."""
+        try:
+            c, f = self.vcanvas, self.root_frame
+            w = max(1, c.winfo_width())
+            # Mindestens fensterhoch, damit expand=True weiter greift,
+            # solange Platz da ist; darueber hinaus so hoch wie noetig.
+            h = max(c.winfo_height(), f.winfo_reqheight())
+            c.itemconfigure(self._root_win, width=w, height=h)
+            c.configure(scrollregion=(0, 0, w, h))
+        except Exception:
+            pass
+
+    def _wheel(self, event):
+        """Mausrad scrollt die Seite - ausser das Widget scrollt selbst."""
+        num = getattr(event, "num", 0)
+        if num == 4:
+            step = -1
+        elif num == 5:
+            step = 1
+        else:
+            step = -1 if getattr(event, "delta", 0) > 0 else 1
+
+        w = event.widget
+        for _ in range(30):                      # Schutz gegen Endlosschleife
+            if w is None or w is self:
+                break
+            if w is getattr(self, "canvas", None):
+                return                           # Wellenform zoomt selbst
+            try:
+                if w.winfo_class() in ("TSpinbox", "Spinbox"):
+                    return                       # Spinbox zaehlt selbst
+            except Exception:
+                pass
+            if w is getattr(self, "tree", None) or w is getattr(self, "log", None):
+                first, last = w.yview()
+                if (step < 0 and first > 0.0) or (step > 0 and last < 1.0):
+                    return                       # hat noch Weg
+                break                            # am Anschlag: Seite scrollen
+            try:
+                parent = w.winfo_parent()
+                w = self.nametowidget(parent) if parent else None
+            except Exception:
+                break
+
+        try:
+            self.vcanvas.yview_scroll(step * 3, "units")
+        except Exception:
+            pass
 
     # -------------------------------------------------------- Sprachwechsel
     def _change_lang(self, _e=None):
@@ -572,7 +659,7 @@ class App(tk.Tk):
         set_lang(code)
         self.cfg["lang"] = code
         save_cfg(self.cfg)
-        self.root_frame.destroy()
+        self.scroll_host.destroy()
         self._build_ui()
         if keep.strip():
             self.log.insert("end", keep + "\n")

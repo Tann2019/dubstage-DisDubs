@@ -241,7 +241,10 @@ class Game(tk.Tk):
         self.cfg = load_cfg()
         set_lang(self.cfg.get("lang", "de"))
         self.title(t("title"))
-        self.geometry("1200x900")
+        # Nicht groesser oeffnen als der Bildschirm hergibt - sonst liegt
+        # die untere Knopfleiste hinter der Taskleiste.
+        sh = self.winfo_screenheight()
+        self.geometry("1200x%d" % min(900, max(780, sh - 130)))
         self.minsize(1020, 780)
         self.configure(bg=BG_BOT)
 

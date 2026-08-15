@@ -7,7 +7,23 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **DubForge was unusable in a non-maximised window.** The three steps were
+  packed straight into the window, so anything past the bottom edge — step 3,
+  "Build pack", the progress bar and the log — was simply gone, with no way to
+  reach it. The content now sits in a scrollable canvas. It is stretched to the
+  window as long as there is room, so a maximised window looks exactly as
+  before; below that it scrolls.
+- The mouse wheel scrolls the page, except over widgets that scroll or count on
+  their own: the waveform still zooms, the clip list and the log scroll
+  themselves and hand the wheel back to the page once they hit their end, and
+  the spinbox keeps counting.
+- Minimum window size lowered from 980×740 to 900×480, and both tools now open
+  no taller than the screen allows. At 1180×880 DubForge did not fit on a 1080p
+  display once the taskbar and title bar were subtracted — which is how the
+  problem arose in the first place.
+- Scrollbars were unstyled and showed up pale grey against the dark interface.
 
 ## [1.0.1] - 2026-08-11
 
