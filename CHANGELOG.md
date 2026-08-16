@@ -7,6 +7,8 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-08-16
+
 ### Changed
 
 - **Setting up is no longer a separate step.** `Start DubForge.bat` and
@@ -359,7 +361,8 @@ switchable at runtime.
   clip lengths it lands one sample short, which previously raised mid-playback
   and froze the interface.
 
-[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.0.1...v1.1.0
