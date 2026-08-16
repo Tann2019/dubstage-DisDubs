@@ -63,7 +63,11 @@ The **Subtitles ▾** menu can fill them in for you: from an SRT or VTT file, or
 
 **3. Build**
 
-Enter a pack name (and your name as author, if you like), tick **"With video"** (required for DubStage and DisDubs), then **"Build pack"**. The pack lands in the `packs` folder next to the tool — exactly where DubStage looks. **"Zip for DisDubs"** wraps it as `<name>.zip`, ready to upload. **"Copy to target folder"** puts a copy anywhere else you like.
+Enter a pack name (and your name as author, if you like), tick **"With video"** (required for DubStage and DisDubs), then **"Build pack"**. Before it starts, DubForge checks the pack the way DisDubs will read it and tells you if something is off — most importantly the casting rule: DisDubs only treats the track names as parts when there are at most half as many speakers as clips (three speakers over five clips becomes one part). The pack lands in the `packs` folder next to the tool — exactly where DubStage looks. Afterwards a dialog offers **"Zip for DisDubs"** (`<name>.zip`, ready to drop into DisDubs' scene picker), the folder, or a copy to your target folder. Building a name that already exists asks whether to overwrite or save as `Name_2`.
+
+Every long job — download, vocal separation, video conversion — shows real progress and can be stopped with **Cancel** next to the bar.
+
+**If something goes wrong:** the log (**Log ▾** at the bottom, also written to `dubforge.log` next to the program) says which tool failed and why; YouTube errors are translated into plain language and, where it helps, offer to update yt-dlp. Missing tools are announced in a yellow row under the title with a pointer to Setup.bat.
 
 ## What ends up in the pack
 

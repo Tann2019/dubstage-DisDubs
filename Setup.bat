@@ -14,13 +14,23 @@ set "PY="
 where py >nul 2>&1 && set "PY=py -3"
 if not defined PY ( where python >nul 2>&1 && set "PY=python" )
 
+rem Der Microsoft-Store-Platzhalter heisst auch "python", oeffnet aber nur
+rem den Store. Erst pruefen, ob der Interpreter wirklich antwortet.
+rem The Microsoft Store stub is also called "python" but only opens the
+rem Store - check that the interpreter actually answers.
+if defined PY (
+  %PY% -c "import sys" >nul 2>&1 || set "PY="
+)
+
 if not defined PY (
-  echo [!] Python wurde nicht gefunden.
+  echo [!] Python wurde nicht gefunden.  /  Python was not found.
   echo.
   echo     Ich versuche es ueber winget zu installieren ...
+  echo     Trying to install it via winget ...
   winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
   echo.
   echo     Bitte dieses Fenster schliessen und Setup.bat NEU starten.
+  echo     Please close this window and run Setup.bat AGAIN.
   pause
   exit /b 1
 )
@@ -29,6 +39,7 @@ echo [1/4] Python:
 %PY% -c "import sys;print('      ',sys.version)"
 %PY% -c "import sys;sys.exit(0 if sys.version_info[:2]>=(3,9) else 1)" || (
   echo [!] Python 3.9 oder neuer wird gebraucht. Bitte aktualisieren.
+  echo     Python 3.9 or newer is required. Please update.
   pause & exit /b 1
 )
 echo.
@@ -38,6 +49,7 @@ echo [2/4] Python-Pakete installieren ^(numpy, yt-dlp, pillow, sounddevice^) ...
 %PY% -m pip install --upgrade pip --quiet
 %PY% -m pip install --upgrade numpy yt-dlp pillow sounddevice || (
   echo [!] Installation fehlgeschlagen. Internet pruefen.
+  echo     Installation failed. Check the internet connection.
   pause & exit /b 1
 )
 echo       ok
@@ -46,14 +58,15 @@ echo.
 
 echo [3/4] Demucs fuer die Stimmen-Trennung ...
 echo       Achtung: laedt PyTorch, das sind mehrere hundert MB bis ~2 GB.
-choice /c JN /n /m "       Jetzt installieren? [J/N] "
-if errorlevel 2 (
+choice /c JYN /n /m "       Jetzt installieren? / Install now? [J/Y/N] "
+if errorlevel 3 (
   echo       uebersprungen - die App laeuft dann ohne Stimmen-Trennung.
 ) else (
   %PY% -m pip install --upgrade demucs soundfile
   if errorlevel 1 (
     echo [!] Demucs konnte nicht installiert werden.
     echo     Die App funktioniert trotzdem, nur ohne Vocal-Trennung.
+    echo     Demucs could not be installed - the app works without vocal separation.
   ) else (
     echo       ok
   )
@@ -95,6 +108,7 @@ echo.
 if not defined FFOK (
   echo [!] Es konnte kein ffmpeg eingerichtet werden. Ohne ffmpeg
   echo     laeuft weder DubForge noch DubStage.
+  echo     ffmpeg could not be set up - neither tool runs without it.
   echo.
   echo     Manueller Weg:
   echo       1. https://www.gyan.dev/ffmpeg/builds/  ^-^>  "release full" herunterladen

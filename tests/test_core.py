@@ -94,10 +94,95 @@ class FileNames(unittest.TestCase):
         self.assertEqual(fn, "01_Voice.wav")
         self.assertIsNone(pc.timestamp_from_name(fn))
 
+    def test_safe_name_and_long_labels(self):
+        self.assertEqual(pc.safe_name("Mei Ling!"), "Mei_Ling")
+        self.assertEqual(pc.safe_name("!!!", "clip"), "clip")
+        long = "A" * 45
+        fn = pc.clip_filename(1, long, 1.0, dub=True)
+        self.assertEqual(pc.label_from_name(fn), long)
+        self.assertEqual(pc.timestamp_from_name(fn), 1.0)
+
+    def test_progress_parsing(self):
+        self.assertAlmostEqual(pc._progress_of("[download]  45.2% of 10MiB", None), 0.452)
+        self.assertAlmostEqual(pc._progress_of("frame=1 time=00:00:06.00 x", 12.0), 0.5)
+        self.assertAlmostEqual(pc._progress_of(" 33%|###   | 5.8/17.5", None), 0.33)
+        self.assertIsNone(pc._progress_of("hello", 10))
+
+    def test_ytdlp_error_classes(self):
+        self.assertEqual(pc.classify_ytdlp_error(
+            "ERROR: Sign in to confirm you" + chr(39) + "re not a bot")[0], "yt_signin")
+        self.assertEqual(pc.classify_ytdlp_error("HTTP Error 403: Forbidden"), ("yt_403", True))
+        self.assertEqual(pc.classify_ytdlp_error("Video unavailable")[0], "yt_unavail")
+        self.assertEqual(pc.classify_ytdlp_error("random")[0], None)
+
     def test_matches_dubstage_reader_convention(self):
         # DubStage/DisDubs: fraction scaled by its own length
         self.assertEqual(pc.timestamp_from_name("01_x_5-2.wav"), 5.2)
         self.assertEqual(pc.timestamp_from_name("01_x_5-002.wav"), 5.002)
+
+
+class DisDubsCheck(unittest.TestCase):
+
+    def clips(self, tracks_per_clip):
+        return [{"start": i * 2.0, "end": i * 2.0 + 1.0, "track": tr, "caption": "x"}
+                for i, tr in enumerate(tracks_per_clip)]
+
+    def test_half_rule(self):
+        tracks = [{"name": "A"}, {"name": "B"}, {"name": "C"}]
+        self.assertEqual(pc.disdubs_parts(tracks, self.clips([0, 1, 2, 0, 1])), 1)
+        self.assertEqual(pc.disdubs_parts(tracks, self.clips([0, 1, 2, 0, 1, 2])), 3)
+        w = pc.disdubs_check(tracks, self.clips([0, 1, 2, 0, 1]))
+        self.assertTrue(any("EINE" in x or "ONE" in x for x in w))
+
+    def test_names(self):
+        tracks = [{"name": "Snake"}, {"name": "snake"}, {"name": "!!!"},
+                  {"name": "x" * 41}]
+        w = "\n".join(pc.disdubs_check(tracks, self.clips([0, 1, 2, 3] * 3)))
+        self.assertIn("Snake / snake", w)
+        self.assertIn("!!!", w)
+        self.assertIn("40", w)
+
+    def test_clean_pack_has_no_warnings(self):
+        tracks = [{"name": "Snake"}, {"name": "Otacon"}]
+        self.assertEqual(pc.disdubs_check(tracks, self.clips([0, 1, 0, 1]),
+                                          duration=60, has_backing=True,
+                                          has_video=True), [])
+
+    def test_length_and_overlap(self):
+        tracks = [{"name": "Snake"}]
+        clips = [{"start": 0, "end": 2.5, "track": 0, "caption": "a"},
+                 {"start": 2.0, "end": 4.0, "track": 0, "caption": "b"}]
+        w = pc.disdubs_check(tracks, clips, duration=200)
+        self.assertEqual(len([x for x in w if "3:00" in x]), 1)
+        self.assertTrue(any("1 s" in x for x in w))
+
+
+class I18n(unittest.TestCase):
+    """Beide Sprachen muessen dieselben Platzhalter tragen / same placeholders."""
+
+    def _pairs(self, table, name):
+        import re
+        bad = []
+        fmt = re.compile(r"%(?:\(\w+\))?[-#0 +]*\d*(?:\.\d+)?[sdifr%]")
+        for key, pair in table.items():
+            if not (isinstance(pair, tuple) and len(pair) == 2):
+                bad.append("%s.%s: not a (de, en) pair" % (name, key))
+                continue
+            de, en = pair
+            if sorted(fmt.findall(de)) != sorted(fmt.findall(en)):
+                bad.append("%s.%s: placeholders differ" % (name, key))
+        return bad
+
+    def test_core_messages(self):
+        self.assertEqual(self._pairs(pc._MSG, "M"), [])
+
+    def test_app_strings(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "dubforge_app_i18n", os.path.join(os.path.dirname(HERE), "DubForge.pyw"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        self.assertEqual(self._pairs(mod.T, "T"), [])
 
 
 class PackFiles(unittest.TestCase):

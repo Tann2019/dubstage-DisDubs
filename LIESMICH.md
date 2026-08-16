@@ -63,7 +63,11 @@ Das Menü **Untertitel ▾** füllt sie auf Wunsch vor: aus einer SRT- oder VTT-
 
 **3. Bauen**
 
-Pack-Name eintragen (und, wenn du magst, deinen Namen als Autor), Häkchen bei **„Mit Video"** setzen (nötig für DubStage und DisDubs), dann **„Pack bauen"**. Der Pack landet im Ordner `packs` neben dem Tool — genau dort sucht DubStage. **„Als ZIP für DisDubs"** packt ihn als `<Name>.zip`, fertig zum Hochladen. Über **„In Zielordner kopieren"** kannst du ihn zusätzlich woandershin legen.
+Pack-Name eintragen (und, wenn du magst, deinen Namen als Autor), Häkchen bei **„Mit Video"** setzen (nötig für DubStage und DisDubs), dann **„Pack bauen"**. Vorher prüft DubForge den Pack so, wie DisDubs ihn lesen wird, und sagt, wenn etwas auffällt — vor allem die Besetzungsregel: DisDubs nimmt die Spurnamen nur dann als Rollen, wenn es höchstens halb so viele Sprecher wie Clips gibt (drei Sprecher auf fünf Clips werden eine Rolle). Der Pack landet im Ordner `packs` neben dem Tool — genau dort sucht DubStage. Danach bietet ein Dialog **„Als ZIP für DisDubs"** (`<Name>.zip`, direkt in die Szenenauswahl von DisDubs ziehen), den Ordner oder eine Kopie in den Zielordner an. Gibt es den Namen schon, fragt DubForge, ob überschreiben oder als `Name_2` speichern.
+
+Jeder lange Vorgang — Download, Stimmen-Trennung, Videokonvertierung — zeigt echten Fortschritt und lässt sich mit **Abbrechen** neben dem Balken stoppen.
+
+**Wenn etwas schiefgeht:** das Protokoll (**Protokoll ▾** unten, zusätzlich in `dubforge.log` neben dem Programm) sagt, welches Werkzeug woran gescheitert ist; YouTube-Fehler werden verständlich übersetzt und bieten, wo es hilft, das yt-dlp-Update an. Fehlende Werkzeuge stehen in einer gelben Zeile unter dem Titel mit Verweis auf Setup.bat.
 
 ## Was im Pack landet
 

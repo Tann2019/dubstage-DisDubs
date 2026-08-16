@@ -27,6 +27,7 @@ import traceback
 import tempfile
 import subprocess
 
+import atexit
 import webbrowser
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
@@ -38,6 +39,8 @@ import updater as upd
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(APP_DIR, "packs")
 CFG_PATH = os.path.join(APP_DIR, "dubforge_settings.json")
+LOG_PATH = os.path.join(APP_DIR, "dubforge.log")     # letzte Sitzung / last session
+HELP_URL = "https://github.com/Tann2019/dubstage-DisDubs#readme"
 
 # ---- Farben / colours ------------------------------------------------------
 BG = "#1e1f26"        # Fenster / window
@@ -160,9 +163,10 @@ T = {
     "track_default": ("Stimme", "Voice"),
     "track_new":    ("Sprecher %d", "Speaker %d"),
     "tracks_hint":  ("Spuren nach dem Sprecher benennen - DisDubs verteilt "
-                     "danach die Rollen.",
+                     "danach die Rollen (hoechstens halb so viele Sprecher wie "
+                     "Clips).",
                      "Name tracks after who speaks - DisDubs casts parts from "
-                     "them."),
+                     "them (at most half as many speakers as clips)."),
     "col_nr":       ("#", "#"),
     "col_track":    ("Sprecher", "Speaker"),
     "col_start":    ("Start", "Start"),
@@ -175,8 +179,72 @@ T = {
     "insp_start":   ("Start:", "Start:"),
     "insp_end":     ("Ende:", "End:"),
     "caption":      ("Untertitel:", "Subtitle:"),
-    "caption_hint": ("Enter = speichern und zum naechsten Clip",
-                     "Enter = save and go to the next clip"),
+    "caption_hint": ("Enter = speichern und zum naechsten Clip   ·   "
+                     "Esc = zurueck zur Zeitleiste   ·   Strg+Leertaste = anhoeren",
+                     "Enter = save and go to the next clip   ·   "
+                     "Esc = back to the timeline   ·   Ctrl+Space = play"),
+    "keys_hint":    ("Leertaste = anhoeren  ·  S = teilen  ·  Strg+D = duplizieren  ·  "
+                     "Entf = loeschen  ·  Pfeile = schieben / Spur wechseln  ·  "
+                     "Strg+Z/Y = rueckgaengig/wiederholen",
+                     "Space = play  ·  S = split  ·  Ctrl+D = duplicate  ·  "
+                     "Del = delete  ·  arrows = nudge / change track  ·  "
+                     "Ctrl+Z/Y = undo/redo"),
+    "help":         ("Hilfe", "Help"),
+    "cancel":       ("Abbrechen", "Cancel"),
+    "st_cancelled": ("Abgebrochen.", "Cancelled."),
+    "dlg_abort_t":  ("Es laeuft noch etwas", "Something is still running"),
+    "dlg_abort":    ("Ein Vorgang laeuft noch (%s).\n\nAbbrechen und schliessen?",
+                     "A job is still running (%s).\n\nAbort it and close?"),
+    "warn_tools":   ("Fehlt: %s  -  bitte Setup.bat ausfuehren.",
+                     "Missing: %s  -  please run Setup.bat."),
+    "warn_demucs":  ("(nicht installiert - Setup.bat)", "(not installed - Setup.bat)"),
+    "ff_ready":     ("ffmpeg bereit (H.264: %s, AAC: %s)",
+                     "ffmpeg ready (H.264: %s, AAC: %s)"),
+    "dlg_exists_t": ("Pack existiert", "Pack exists"),
+    "dlg_exists":   ("Es gibt schon einen Pack '%s'.\n\n"
+                     "Ja = ueberschreiben\nNein = als '%s' speichern",
+                     "There is already a pack '%s'.\n\n"
+                     "Yes = overwrite\nNo = save as '%s'"),
+    "dlg_check_t":  ("Vor dem Bauen", "Before building"),
+    "dlg_check":    ("Das faellt an dem Pack auf:\n\n%s\n\nTrotzdem bauen?",
+                     "Things worth knowing about this pack:\n\n%s\n\nBuild anyway?"),
+    "dlg_built_t":  ("Pack gebaut", "Pack built"),
+    "dlg_built":    ("%s\n\n%d Clips, %d Sprecher%s",
+                     "%s\n\n%d clips, %d speakers%s"),
+    "dlg_built_parts": ("  ·  DisDubs: %d Rolle(n)", "  ·  DisDubs: %d part(s)"),
+    "btn_zip_now":  ("Als ZIP fuer DisDubs", "Zip for DisDubs"),
+    "btn_open_folder": ("Ordner oeffnen", "Open folder"),
+    "btn_close":    ("Schliessen", "Close"),
+    "dlg_rebuild_t": ("Clips geaendert", "Clips changed"),
+    "dlg_rebuild":  ("Die Clips wurden seit dem letzten Bauen geaendert.\n\n"
+                     "Erst neu bauen?",
+                     "The clips changed since the last build.\n\nRebuild first?"),
+    "dlg_voice_zip": ("Das ist ein Clip-Pack ohne Video - DisDubs nimmt nur "
+                      "Packs mit Video an.\n'Mit Video' anhaken und neu bauen.",
+                      "This is a clip pack without video - DisDubs only accepts "
+                      "packs with video.\nTick 'With video' and rebuild."),
+    "dlg_long_t":   ("Lange Zeitspanne", "Long time span"),
+    "dlg_long":     ("Der Ausschnitt ist %s lang und die Stimmen-Trennung ist an. "
+                     "Demucs braucht dafuer auf der CPU leicht 10-20 Minuten.\n\n"
+                     "Trotzdem starten?",
+                     "The span is %s long and vocal separation is on. On the CPU "
+                     "Demucs can easily take 10-20 minutes for that.\n\n"
+                     "Start anyway?"),
+    "dlg_yt_t":     ("Download fehlgeschlagen", "Download failed"),
+    "dlg_yt_upd":   ("\n\nJetzt yt-dlp aktualisieren?", "\n\nUpdate yt-dlp now?"),
+    "built_at":     ("gebaut %s  ·  %d Clips", "built %s  ·  %d clips"),
+    "stats_parts":  ("DisDubs: %d Rolle(n)", "DisDubs: %d part(s)"),
+    "preview_none": ("kein Videobild", "no video frame"),
+    "preview_pick": ("Clip waehlen", "select a clip"),
+    "st_voc_fail":  ("Stimmen-Trennung fehlgeschlagen - Originalton wird benutzt.",
+                     "Vocal separation failed - using the original audio."),
+    "st_novideo":   ("Quelle ohne Bild - Video wird uebersprungen.",
+                     "Source has no picture - video skipped."),
+    "st_check":     ("Pruefe Werkzeuge ...", "Checking tools ..."),
+    "crash_t":      ("DubForge ist auf einen Fehler gestossen",
+                     "DubForge ran into an error"),
+    "crash":        ("%s\n\nDetails stehen in dubforge.log neben dem Programm.",
+                     "%s\n\nDetails are in dubforge.log next to the program."),
     "btn_play":     ("Anhoeren", "Play"),
     "btn_stop":     ("Stopp", "Stop"),
     "btn_split":    ("Teilen", "Split"),
@@ -251,8 +319,6 @@ T = {
     "ready":        ("Bereit.", "Ready."),
     "missing":      ("FEHLT: %s  ->  bitte Setup.bat ausfuehren.",
                      "MISSING: %s  ->  please run Setup.bat."),
-    "ff_ready":     ("ffmpeg bereit (Theora: %s, Vorbis: %s)",
-                     "ffmpeg ready (Theora: %s, Vorbis: %s)"),
     "yes":          ("ja", "yes"),
     "no_caps":      ("NEIN", "NO"),
 
@@ -450,9 +516,25 @@ class App(tk.Tk):
 
         self.msgq = queue.Queue()
         self.busy = False
+        self.busy_what = ""
         self.player = None
+        self._logfile = None
+        try:
+            self._logfile = open(LOG_PATH, "w", encoding="utf-8")
+            self._logfile.write("DubForge %s  -  %s\n" % (upd.VERSION, time.ctime()))
+        except Exception:
+            self._logfile = None
+        self.report_callback_exception = self._tk_exception
 
+        pc.sweep_temp("dubforge_", max_age_h=24)
         self.work = tempfile.mkdtemp(prefix="dubforge_")
+        atexit.register(lambda: shutil.rmtree(self.work, ignore_errors=True))
+        self.have_ffmpeg = True
+        self.have_demucs = True
+        self.have_ytdlp = True
+        self.built_dub = True
+        self.built_info = None       # (time, clips) / letzter Bau
+        self._auto_detect_ok = False # Regler duerfen frisch erkennen
         self.video_path = None
         self.video_has_stream = False
         self.video_from_pack = False   # dub_video aus einem Pack: kopieren statt neu kodieren
@@ -503,6 +585,7 @@ class App(tk.Tk):
         self._build_style()
         self._init_vars()
         self._build_ui()
+        self.title(t("title") + "   ·   v" + upd.VERSION)
         # Mausrad global: die Seite scrollt, ausser ueber Widgets, die
         # selbst scrollen (siehe _wheel). / page scroll, see _wheel
         self.bind("<MouseWheel>", self._wheel)
@@ -511,8 +594,8 @@ class App(tk.Tk):
         self._pump_id = self.after(80, self._pump)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.bind("<Key>", self._on_key)
-        self._check_tools()
-        self.after(1200, self._check_update)
+        self.after(50, self._check_tools_async)
+        self._upd_id = self.after(1200, self._check_update)
 
     # -------------------------------------------------- Variablen (einmalig)
     def _init_vars(self):
@@ -559,7 +642,8 @@ class App(tk.Tk):
         s.configure("Dim.TLabel", background=BG, foreground=DIM)
         s.configure("Insp.TLabel", background=BG, foreground=FG,
                     font=(FONT + " Semibold", 10))
-        s.configure("Warn.TLabel", background=BG, foreground=WARN)
+        s.configure("Warn.TLabel", background="#3a2f1e", foreground=WARN,
+                    padding=(10, 5), font=(FONT + " Semibold", 10))
         s.configure("TButton", background="#3a3d4d", foreground=FG, padding=6,
                     borderwidth=0, focuscolor=BG)
         s.map("TButton", background=[("active", "#4a4e63"),
@@ -683,6 +767,12 @@ class App(tk.Tk):
         self.lang_box.bind("<<ComboboxSelected>>", self._change_lang)
         ttk.Label(top, text=t("lang_label"),
                   style="Dim.TLabel").pack(side="right", padx=(0, 6))
+        ttk.Button(top, text=t("help"), style="Small.TButton",
+                   command=lambda: webbrowser.open(HELP_URL)).pack(side="right",
+                                                                   padx=(0, 12))
+        # Warnzeile fuer fehlende Werkzeuge / warning row for missing tools
+        self.warn_lbl = ttk.Label(root, text="", style="Warn.TLabel")
+        self._apply_tool_state()
 
         # ---------------- Schritt 1: Quelle / source
         step1 = ttk.LabelFrame(root, text=t("s1"), padding=(10, 6, 10, 8))
@@ -711,8 +801,9 @@ class App(tk.Tk):
         ttk.Entry(r2, textvariable=self.t_end, width=11).pack(side="left", padx=6)
         ttk.Label(r2, text=t("time_hint"),
                   style="Dim.TLabel").pack(side="left", padx=(4, 16))
-        ttk.Checkbutton(r2, text=t("sep_voc"),
-                        variable=self.sep_var).pack(side="left")
+        self.sep_chk = ttk.Checkbutton(r2, text=t("sep_voc"),
+                                       variable=self.sep_var)
+        self.sep_chk.pack(side="left")
         self.upd_btn = ttk.Button(r2, text=t("upd_ytdlp"), style="Small.TButton",
                                   command=self.update_ytdlp)
         self.upd_btn.pack(side="right")
@@ -761,11 +852,13 @@ class App(tk.Tk):
         sub1 = self._menu(dm)
         for key, val in (("sens_low", 0.6), ("sens_norm", 1.0),
                          ("sens_high", 1.5), ("sens_vhigh", 2.2)):
-            sub1.add_radiobutton(label=t(key), variable=self.sens, value=val)
+            sub1.add_radiobutton(label=t(key), variable=self.sens, value=val,
+                                 command=self._detect_setting_changed)
         dm.add_cascade(label=t("sensitivity"), menu=sub1)
         sub2 = self._menu(dm)
         for val in (3.0, 4.0, 6.0, 8.0, 12.0, 20.0):
-            sub2.add_radiobutton(label="%g s" % val, variable=self.maxlen, value=val)
+            sub2.add_radiobutton(label="%g s" % val, variable=self.maxlen, value=val,
+                                 command=self._detect_setting_changed)
         dm.add_cascade(label=t("maxlen"), menu=sub2)
         self.det_mb.configure(menu=dm)
         self.det_mb.pack(side="right", padx=(0, 6))
@@ -844,10 +937,17 @@ class App(tk.Tk):
         self.caption_entry.bind("<Return>", self._caption_next)
         self.caption_entry.bind("<FocusOut>", lambda e: self._caption_save())
         self.caption_entry.bind("<Escape>", lambda e: self.canvas.focus_set())
+        self.caption_entry.bind("<Control-space>",
+                                lambda e: (self._play_selected(), "break")[1])
         f3 = ttk.Frame(fields)
         f3.pack(fill="x", pady=(3, 0))
         ttk.Label(f3, text=t("caption_hint"), style="Dim.TLabel").pack(side="left")
-        ttk.Label(f3, text=t("tracks_hint"), style="Dim.TLabel").pack(side="right")
+        f4 = ttk.Frame(fields)
+        f4.pack(fill="x", pady=(1, 0))
+        ttk.Label(f4, text=t("keys_hint"), style="Dim.TLabel").pack(side="left")
+        f5 = ttk.Frame(fields)
+        f5.pack(fill="x", pady=(1, 0))
+        ttk.Label(f5, text=t("tracks_hint"), style="Dim.TLabel").pack(side="left")
 
         # ---- Liste / list
         mid = ttk.Frame(step2)
@@ -910,9 +1010,15 @@ class App(tk.Tk):
         foot.pack(fill="x", pady=(8, 0))
         self.status = ttk.Label(foot, text=t("ready"), style="Dim.TLabel")
         self.status.pack(side="left", fill="x", expand=True)
+        self.cancel_btn = ttk.Button(foot, text=t("cancel"), style="Small.TButton",
+                                     command=self.cancel_job, state="disabled")
+        self.cancel_btn.pack(side="right", padx=(8, 0))
         self.prog = ttk.Progressbar(foot, mode="determinate", maximum=100,
                                     length=260)
         self.prog.pack(side="right")
+        self.built_lbl = ttk.Label(foot, text="", style="Dim.TLabel")
+        self.built_lbl.pack(side="right", padx=(0, 14))
+        self._url_span_guard()
 
         self.logf = ttk.Frame(root)
         self.log = tk.Text(self.logf, height=5, bg=BG3, fg="#93a0c0",
@@ -1179,20 +1285,40 @@ class App(tk.Tk):
             self.logf.pack_forget()
             self.log_btn.configure(text=t("log_show"))
 
-    def _check_tools(self):
-        missing = []
-        if not pc.find_tool("ffmpeg"):
-            missing.append("ffmpeg")
-        if not pc.ytdlp():
-            missing.append("yt-dlp")
+    def _check_tools_async(self):
+        """Werkzeuge im Hintergrund pruefen - der Start soll nicht haengen."""
+        self._set_status(t("st_check"))
+
+        def work():
+            res = {"ffmpeg": bool(pc.find_tool("ffmpeg") and pc.find_tool("ffprobe")),
+                   "ytdlp": bool(pc.ytdlp()),
+                   "demucs": pc.has_demucs()}
+            enc = None
+            if res["ffmpeg"]:
+                try:
+                    enc = pc.check_encoders()
+                except Exception:
+                    enc = None
+            ver, age = (None, None)
+            if res["ytdlp"]:
+                try:
+                    ver, age = pc.ytdlp_version()
+                except Exception:
+                    pass
+            self.msgq.put(("tools", (res, enc, ver, age)))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_tools(self, res, enc, ver, age):
+        self.have_ffmpeg = res["ffmpeg"]
+        self.have_ytdlp = res["ytdlp"]
+        self.have_demucs = res["demucs"]
+        missing = [n for n, ok in (("ffmpeg", res["ffmpeg"]),
+                                   ("yt-dlp", res["ytdlp"])) if not ok]
         if missing:
             self._log(t("missing", ", ".join(missing)))
-        else:
-            th, vo = pc.check_encoders()
-            self._log(t("ff_ready",
-                        t("yes") if th else t("no_caps"),
-                        t("yes") if vo else t("no_caps")))
-        ver, age = pc.ytdlp_version()
+        elif enc:
+            self._log(t("ff_ready", t("yes") if enc[0] else t("no_caps"),
+                        t("yes") if enc[1] else t("no_caps")))
         self._ytdlp_age = age
         if ver and age is not None:
             yt = pc.ytdlp() or []
@@ -1200,6 +1326,37 @@ class App(tk.Tk):
             self._log(t("ytdlp_ver", ver, age) + "   -   " + str(where))
             if age > 60:
                 self._log(t("ytdlp_old", age))
+        if not self.busy:
+            self.status.configure(text=t("ready"))
+        self._apply_tool_state()
+
+    def _apply_tool_state(self):
+        """Warnzeile, Knoepfe und Demucs-Haken nach den gefundenen Werkzeugen."""
+        missing = []
+        if not self.have_ffmpeg:
+            missing.append("ffmpeg")
+        if not self.have_ytdlp:
+            missing.append("yt-dlp")
+        try:
+            if missing:
+                self.warn_lbl.configure(text="⚠  " + t("warn_tools", ", ".join(missing)))
+                self.warn_lbl.pack(fill="x", pady=(6, 0), after=self.warn_lbl.master
+                                   .winfo_children()[0])
+            else:
+                self.warn_lbl.pack_forget()
+            if not self.busy:
+                self.analyze_btn.configure(
+                    state="normal" if self.have_ffmpeg else "disabled")
+                self.build_btn.configure(
+                    state="normal" if self.have_ffmpeg else "disabled")
+            if self.have_demucs:
+                self.sep_chk.configure(text=t("sep_voc"), state="normal")
+            else:
+                self.sep_var.set(False)
+                self.sep_chk.configure(text=t("sep_voc") + "  " + t("warn_demucs"),
+                                       state="disabled")
+        except Exception:
+            pass
 
     def update_ytdlp(self):
         before = pc.ytdlp_version()[0]
@@ -1226,83 +1383,200 @@ class App(tk.Tk):
 
     # -------------------------------------------------- Thread-Kommunikation
     def _log(self, text):
-        self.msgq.put(("log", str(text)))
+        text = str(text)
+        self.msgq.put(("log", text))
+        f = self._logfile
+        if f:
+            try:
+                f.write(text + "\n")
+                f.flush()
+            except Exception:
+                pass
 
     def _set_status(self, text, pct=None):
         self.msgq.put(("status", (text, pct)))
+
+    def _set_progress(self, frac):
+        """0..1 aus einem Arbeitsschritt / from a worker step."""
+        self.msgq.put(("progress", frac))
+
+    def _tk_exception(self, exc, val, tb):
+        """Unerwartete Fehler in Tk-Callbacks: loggen und zeigen statt schlucken."""
+        text = "".join(traceback.format_exception(exc, val, tb))
+        try:
+            self._log(text)
+        except Exception:
+            pass
+        try:
+            messagebox.showerror(t("crash_t"), t("crash", str(val)[:300]))
+        except Exception:
+            pass
 
     def _pump(self):
         try:
             while True:
                 kind, payload = self.msgq.get_nowait()
-                if kind == "log":
-                    self.log.insert("end", payload + "\n")
-                    self.log.see("end")
-                    if int(self.log.index("end-1c").split(".")[0]) > 600:
-                        self.log.delete("1.0", "200.0")
-                elif kind == "status":
-                    text, pct = payload
-                    self.status.configure(text=text)
-                    if pct is not None:
-                        self.prog.configure(value=max(0, min(100, pct)))
-                elif kind == "done":
-                    self._set_busy(False)
-                    payload()
-                elif kind == "error":
-                    self._set_busy(False)
-                    messagebox.showerror(t("dlg_err"), payload)
-                elif kind == "preview":
-                    self._show_preview(*payload)
-                elif kind == "play_start":
-                    self._on_play_start(*payload)
-                elif kind == "update":
-                    upd.note_checked(self.cfg)
-                    self.cfg["upd_cache"] = payload
-                    save_cfg(self.cfg)
-                    if payload.get("newer") and not self.upd_dismissed:
-                        self.upd_info = payload
-                        self._show_banner()
-                elif kind == "upd_say":
-                    self._upd_say(payload)
-                elif kind == "upd_quit":
-                    self._upd_say(t("upd_swap"))
-                    self.dirty = False
-                    self.after(700, self._on_close)
-                elif kind == "upd_error":
-                    self.upd_busy = False
-                    try:
-                        self.upd_go.configure(state="normal")
-                    except Exception:
-                        pass
-                    self._upd_say("")
-                    messagebox.showerror(t("upd_fail_t"), t("upd_fail", payload))
+                try:
+                    self._dispatch(kind, payload)
+                except Exception:
+                    # Ein kaputter Callback darf die Pumpe nicht toeten.
+                    # A broken callback must not kill the pump.
+                    self._log(traceback.format_exc())
         except queue.Empty:
             pass
-        self._pump_id = self.after(80, self._pump)
+        finally:
+            self._pump_id = self.after(80, self._pump)
 
-    def _set_busy(self, flag):
+    def _dispatch(self, kind, payload):
+        if kind == "log":
+            self.log.insert("end", payload + "\n")
+            self.log.see("end")
+            if int(self.log.index("end-1c").split(".")[0]) > 600:
+                self.log.delete("1.0", "200.0")
+        elif kind == "status":
+            text, pct = payload
+            self.status.configure(text=text)
+            self._bar(pct)
+        elif kind == "progress":
+            self._bar_frac(payload)
+        elif kind == "done":
+            self._set_busy(False)
+            payload()
+        elif kind == "cancelled":
+            pc.reset_cancel()
+            self._set_busy(False)
+            self.status.configure(text=t("st_cancelled"))
+            self._log(t("st_cancelled"))
+            if payload:
+                payload()
+        elif kind == "error":
+            self._set_busy(False)
+            self.status.configure(text=t("dlg_err"))
+            self._show_error(payload)
+        elif kind == "tools":
+            self._on_tools(*payload)
+        elif kind == "preview":
+            self._show_preview(*payload)
+        elif kind == "play_start":
+            self._on_play_start(*payload)
+        elif kind == "update":
+            upd.note_checked(self.cfg)
+            self.cfg["upd_cache"] = payload
+            save_cfg(self.cfg)
+            if payload.get("newer") and not self.upd_dismissed:
+                self.upd_info = payload
+                self._show_banner()
+        elif kind == "upd_say":
+            self._upd_say(payload)
+        elif kind == "upd_quit":
+            self._upd_say(t("upd_swap"))
+            self.dirty = False
+            self.after(700, self._on_close)
+        elif kind == "upd_error":
+            self.upd_busy = False
+            try:
+                self.upd_go.configure(state="normal")
+            except Exception:
+                pass
+            self._upd_say("")
+            messagebox.showerror(t("upd_fail_t"), t("upd_fail", payload))
+
+    def _show_error(self, payload):
+        """payload: str oder (text, 'ytdlp') fuer den Update-Vorschlag."""
+        if isinstance(payload, tuple):
+            text, kind = payload
+            if kind == "ytdlp":
+                if messagebox.askyesno(t("dlg_yt_t"), text + t("dlg_yt_upd")):
+                    self.update_ytdlp()
+                return
+            payload = text
+        messagebox.showerror(t("dlg_err"), payload)
+
+    # ---- Fortschrittsbalken / progress bar
+    def _bar(self, pct):
+        """Prozent bekannt -> bestimmt; None -> unbestimmt (laeuft)."""
+        try:
+            if pct is None:
+                if self.busy and str(self.prog.cget("mode")) != "indeterminate":
+                    self.prog.configure(mode="indeterminate")
+                    self.prog.start(12)
+                return
+            if str(self.prog.cget("mode")) == "indeterminate":
+                self.prog.stop()
+                self.prog.configure(mode="determinate")
+            self.prog.configure(value=max(0, min(100, pct)))
+        except Exception:
+            pass
+
+    def _bar_frac(self, frac):
+        lo, hi = getattr(self, "_bar_span", (0, 100))
+        self._bar(lo + (hi - lo) * max(0.0, min(1.0, float(frac))))
+
+    def _phase(self, text, lo, hi):
+        """Ein Arbeitsschritt, der von lo bis hi Prozent laeuft."""
+        self._bar_span = (lo, hi)
+        self._set_status(text, lo)
+
+    def _set_busy(self, flag, what=""):
         self.busy = flag
+        self.busy_what = what if flag else ""
         state = "disabled" if flag else "normal"
         for b in (self.analyze_btn, self.build_btn, self.install_btn,
                   self.zip_btn, self.upd_btn):
             b.configure(state=state)
+        try:
+            self.cancel_btn.configure(state="normal" if flag else "disabled")
+        except Exception:
+            pass
         if not flag:
-            self.prog.configure(value=0)
+            try:
+                self.prog.stop()
+                self.prog.configure(mode="determinate", value=0)
+            except Exception:
+                pass
+            self._apply_tool_state()
 
-    def _bg(self, fn, on_done=None):
+    def _bg(self, fn, on_done=None, on_cancel=None, what=""):
         if self.busy:
             messagebox.showinfo(t("dlg_busy_t"), t("dlg_busy"))
             return
-        self._set_busy(True)
+        self._set_busy(True, what)
+        self._bar_span = (0, 100)
+        pc.reset_cancel()
 
         def wrapper():
             try:
                 fn()
                 self.msgq.put(("done", on_done or (lambda: None)))
+            except pc.Cancelled:
+                self.msgq.put(("cancelled", on_cancel))
             except Exception as ex:
+                if pc.cancelled():
+                    self.msgq.put(("cancelled", on_cancel))
+                    return
                 self._log(traceback.format_exc())
-                self.msgq.put(("error", str(ex)))
+                self.msgq.put(("error", self._friendly_error(ex)))
         threading.Thread(target=wrapper, daemon=True).start()
+
+    def cancel_job(self):
+        if not self.busy:
+            return
+        pc.cancel()
+        self.status.configure(text=t("st_cancelled") + " ...")
+
+    def _friendly_error(self, ex):
+        """yt-dlp-Ausgaben in verstaendliche Meldungen uebersetzen."""
+        text = str(ex)
+        key, upd_helps = pc.classify_ytdlp_error(text)
+        if key:
+            msg = pc.M(key)
+            age = getattr(self, "_ytdlp_age", None)
+            if upd_helps:
+                if age is not None:
+                    msg += "\n\n" + t("ytdlp_ver", "", age).replace("yt-dlp  ", "yt-dlp ")
+                return (msg, "ytdlp")
+            return msg
+        return text
 
     # ------------------------------------------------------ Undo / Redo
     def _state_json(self):
@@ -1408,7 +1682,22 @@ class App(tk.Tk):
             return
         self._snapshot()
         c["start"], c["end"] = a, a + length
-        self._after_edit()
+        # Reihenfolge kann sich aendern - dann voll auffrischen, sonst nur
+        # die eine Zeile / full refresh only if the order changed
+        order = sorted(range(len(self.clips)),
+                       key=lambda i: (self.clips[i]["start"], self.clips[i]["track"]))
+        if order != list(range(len(self.clips))):
+            self._after_edit()
+            return
+        try:
+            i = self.selected
+            self.tree.set(str(i), "start", "%.3f" % c["start"])
+            self.tree.set(str(i), "end", "%.3f" % c["end"])
+        except Exception:
+            pass
+        self.start_var.set("%.3f" % c["start"])
+        self.end_var.set("%.3f" % c["end"])
+        self.draw_wave()
 
     # ------------------------------------------------------------ ANALYSE
     def start_analyze(self):
@@ -1428,96 +1717,147 @@ class App(tk.Tk):
         if self.clips and self.dirty:
             if not messagebox.askyesno(t("dlg_replace_t"), t("dlg_replace")):
                 return
+        sep = bool(self.sep_var.get()) and self.have_demucs
+        span = None
+        if t1 is not None:
+            span = t1 - (t0 or 0.0)
+        elif self.src_mode.get() == "file" and os.path.isfile(src):
+            try:
+                span = pc.probe_duration(src) - (t0 or 0.0)
+            except Exception:
+                span = None
+        if sep and span and span > 240:
+            if not messagebox.askyesno(t("dlg_long_t"),
+                                       t("dlg_long", pc.fmt_time(span)[:-4])):
+                return
         self._save_cfg()
         self._stop_play()
         mode = self.src_mode.get()
-        sep = self.sep_var.get()
-        self._bg(lambda: self._do_analyze(src, mode, t0, t1, sep),
-                 on_done=self._after_analyze)
+        opts = {"maxlen": float(self.maxlen.get()), "sens": float(self.sens.get())}
+        self._bg(lambda: self._do_analyze(src, mode, t0, t1, sep, opts),
+                 on_done=self._after_analyze, what=t("analyze"))
 
-    def _reset_work(self):
-        shutil.rmtree(self.work, ignore_errors=True)
-        os.makedirs(self.work, exist_ok=True)
-        self.backing_path = None
-        self.vocals_path = None
-        self.video_from_pack = False
-        self.video_has_stream = False
-        self._preview_cache = {}
-        self._peak_cache = (None, None)
+    def _new_session(self):
+        """Frischer Arbeitsordner; die alte Sitzung bleibt bis zum Erfolg."""
+        work = tempfile.mkdtemp(prefix="dubforge_")
+        return {"work": work, "video_path": None, "audio_path": None,
+                "vocals_path": None, "backing_path": None,
+                "video_has_stream": False, "video_from_pack": False,
+                "wave_data": [], "wave_sr": 8000, "duration": 0.0,
+                "src_offset": 0.0, "source_url": "", "tracks": [], "clips": [],
+                "meta": None}
 
-    def _do_analyze(self, src, mode, t0, t1, separate):
-        self._reset_work()
-        self.src_offset = float(t0 or 0.0)
-        self.source_url = src if mode == "url" else ""
-
-        if mode == "url":
-            self._set_status(t("st_download"), 5)
-            try:
-                self.video_path = pc.download_youtube(src, t0, t1, self.work,
-                                                      log=self._log)
-            except Exception:
-                age = getattr(self, "_ytdlp_age", None)
-                if age is not None and age > 30:
-                    self._log(t("dl_hint", age))
-                raise
-        else:
-            if not os.path.isfile(src):
-                raise RuntimeError(pc.M("file_missing", src))
-            self._set_status(t("st_trim"), 5)
-            self.video_path = pc.trim_local(src, t0, t1, self.work, log=self._log)
-
-        self._set_status(t("st_audio"), 20)
-        self.audio_path = os.path.join(self.work, "audio.wav")
-        pc.extract_audio(self.video_path, self.audio_path, log=self._log)
-        self.duration = pc.probe_duration(self.audio_path)
-        self._log(t("log_len", self.duration))
-        try:
-            self.video_has_stream = pc.has_video_stream(self.video_path)
-        except Exception:
-            self.video_has_stream = False
-
-        cut_source = self.audio_path
-        if separate:
-            self._set_status(t("st_demucs"), 30)
-            try:
-                voc, nov = pc.separate_vocals(self.audio_path, self.work,
-                                              log=self._log)
-                self.vocals_path = voc
-                self.backing_path = nov
-                cut_source = voc
-                self._log(t("log_voc_ok"))
-            except Exception as ex:
-                self._log(t("log_voc_fail", str(ex).splitlines()[0][:70]))
-                self.vocals_path = None
-
-        self._set_status(t("st_wave"), 78)
-        self.wave_data, self.wave_sr = pc.load_mono(cut_source)
-        self._peak_cache = (None, None)
-
-        self._set_status(t("st_detect"), 88)
-        found = pc.detect_clips(self.wave_data, self.wave_sr,
-                                max_clip=float(self.maxlen.get()),
-                                sensitivity=float(self.sens.get()))
-        # Reihenfolge wichtig: die Zeichenroutine im Hauptthread darf nie
-        # alte Clips gegen neue Spuren halten. / Order matters: the drawing
-        # code on the main thread must never see old clips with new tracks.
+    def _commit_session(self, sess):
+        """Hauptthread: neue Sitzung uebernehmen, alte wegraeumen."""
+        old = self.work
+        self.work = sess["work"]
+        for k in ("video_path", "audio_path", "vocals_path", "backing_path",
+                  "video_has_stream", "video_from_pack", "wave_data", "wave_sr",
+                  "duration", "src_offset", "source_url"):
+            setattr(self, k, sess[k])
         self.clips = []
-        self.tracks = [self._new_track(t("track_default"))]
-        self.clips = [{"start": a, "end": b, "track": 0, "caption": ""}
-                      for (a, b) in found]
-        self._log(t("log_found", len(self.clips)))
-        self._set_status(t("st_done_an"), 100)
+        self.tracks = sess["tracks"]
+        self.clips = sess["clips"]
+        self._preview_cache = {}
+        self._preview_key = None
+        self._peak_cache = (None, None)
+        self.playhead = None
+        if old and old != self.work:
+            shutil.rmtree(old, ignore_errors=True)
+
+    def _do_analyze(self, src, mode, t0, t1, separate, opts):
+        sess = self._new_session()
+        work = sess["work"]
+        try:
+            sess["src_offset"] = float(t0 or 0.0)
+            sess["source_url"] = src if mode == "url" else ""
+
+            if mode == "url":
+                self._phase(t("st_download"), 2, 22)
+                try:
+                    sess["video_path"] = pc.download_youtube(
+                        src, t0, t1, work, log=self._log,
+                        progress=self._set_progress)
+                except pc.Cancelled:
+                    raise
+                except Exception:
+                    age = getattr(self, "_ytdlp_age", None)
+                    if age is not None and age > 30:
+                        self._log(t("dl_hint", age))
+                    raise
+            else:
+                if not os.path.isfile(src):
+                    raise RuntimeError(pc.M("file_missing", src))
+                self._phase(t("st_trim"), 2, 22)
+                sess["video_path"] = pc.trim_local(src, t0, t1, work, log=self._log)
+
+            self._phase(t("st_audio"), 22, 28)
+            sess["audio_path"] = os.path.join(work, "audio.wav")
+            pc.extract_audio(sess["video_path"], sess["audio_path"], log=self._log)
+            sess["duration"] = pc.probe_duration(sess["audio_path"])
+            self._log(t("log_len", sess["duration"]))
+            try:
+                sess["video_has_stream"] = pc.has_video_stream(sess["video_path"])
+            except Exception:
+                sess["video_has_stream"] = False
+
+            cut_source = sess["audio_path"]
+            if separate:
+                self._phase(t("st_demucs"), 28, 78)
+                self._set_status(t("st_demucs"), None)
+                try:
+                    voc, nov = pc.separate_vocals(sess["audio_path"], work,
+                                                  log=self._log,
+                                                  progress=self._set_progress)
+                    sess["vocals_path"] = voc
+                    sess["backing_path"] = nov
+                    cut_source = voc
+                    self._log(t("log_voc_ok"))
+                except pc.Cancelled:
+                    raise
+                except Exception as ex:
+                    self._log(t("log_voc_fail", str(ex).splitlines()[0][:70]))
+                    self._voc_failed = True
+
+            self._phase(t("st_wave"), 78, 88)
+            sess["wave_data"], sess["wave_sr"] = pc.load_mono(cut_source)
+
+            self._phase(t("st_detect"), 88, 98)
+            found = pc.detect_clips(sess["wave_data"], sess["wave_sr"],
+                                    max_clip=opts["maxlen"],
+                                    sensitivity=opts["sens"])
+            sess["tracks"] = [{"name": t("track_default"), "color": TRACK_COLORS[0]}]
+            sess["clips"] = [{"start": a, "end": b, "track": 0, "caption": ""}
+                             for (a, b) in found]
+            self._log(t("log_found", len(sess["clips"])))
+            self._pending_session = sess
+            self._set_status(t("st_done_an"), 100)
+        except BaseException:
+            shutil.rmtree(work, ignore_errors=True)
+            raise
 
     def _after_analyze(self):
+        sess = getattr(self, "_pending_session", None)
+        if sess is not None:
+            self._pending_session = None
+            self._commit_session(sess)
         self._undo.clear()
         self._redo.clear()
         self.dirty = False
         self.built_path = None
+        self.built_info = None
+        self._auto_detect_ok = True
         self.selected = 0 if self.clips else None
         self._refresh_track_box()
         self._zoom_all()
         self.refresh_list()
         self._update_undo_buttons()
+        self._update_built_label()
+        if getattr(self, "_voc_failed", False):
+            self._voc_failed = False
+            self.status.configure(text=t("st_voc_fail"))
+        elif not self.video_has_stream and self.audio_path:
+            self.status.configure(text=t("st_novideo"))
 
     # ------------------------------------------------ Pack weiterbearbeiten
     def open_pack(self):
@@ -1529,106 +1869,135 @@ class App(tk.Tk):
             if not messagebox.askyesno(t("dlg_replace_t"), t("dlg_replace")):
                 return
         self._stop_play()
-        self._bg(lambda: self._do_open_pack(folder), on_done=self._after_open)
+        self._bg(lambda: self._do_open_pack(folder), on_done=self._after_open,
+                 what=t("open_pack"))
 
     def _do_open_pack(self, folder):
-        self._set_status(t("st_open"), 5)
-        info = pc.read_pack_for_edit(folder)
-        self._reset_work()
-
-        # Quelle sichern - beim Neubauen in denselben Ordner wuerde sie sonst
-        # geloescht. / Copy the sources: rebuilding into the same folder
-        # would otherwise delete them first.
-        if info["video"]:
-            ext = os.path.splitext(info["video"])[1]
-            self.video_path = os.path.join(self.work, "source" + ext)
-            shutil.copy2(info["video"], self.video_path)
-            self.video_from_pack = ext.lower() == ".mp4"
-        else:
+        self._phase(t("st_open"), 2, 10)
+        info = pc.read_pack_for_edit(folder)      # prueft, bevor etwas passiert
+        if not info["video"]:
             raise RuntimeError(pc.M("no_pack", folder))
-        if info["backing"]:
-            self.backing_path = os.path.join(self.work, "backing.wav")
-            shutil.copy2(info["backing"], self.backing_path)
-        else:
-            self._log(t("log_nobacking"))
-
-        self._set_status(t("st_audio"), 30)
-        self.audio_path = os.path.join(self.work, "audio.wav")
-        pc.extract_audio(self.video_path, self.audio_path, log=self._log)
-        self.duration = pc.probe_duration(self.audio_path)
+        sess = self._new_session()
+        work = sess["work"]
         try:
-            self.video_has_stream = pc.has_video_stream(self.video_path)
-        except Exception:
-            self.video_has_stream = False
-        self._log(t("log_novoc"))
+            # Quelle sichern - beim Neubauen in denselben Ordner wuerde sie
+            # sonst geloescht. / copy sources out first
+            ext = os.path.splitext(info["video"])[1]
+            sess["video_path"] = os.path.join(work, "source" + ext)
+            shutil.copy2(info["video"], sess["video_path"])
+            sess["video_from_pack"] = ext.lower() == ".mp4"
+            if info["backing"]:
+                sess["backing_path"] = os.path.join(work, "backing.wav")
+                shutil.copy2(info["backing"], sess["backing_path"])
+            else:
+                self._log(t("log_nobacking"))
 
-        self._set_status(t("st_wave"), 70)
-        self.wave_data, self.wave_sr = pc.load_mono(self.audio_path)
-        self._peak_cache = (None, None)
+            self._phase(t("st_audio"), 10, 50)
+            sess["audio_path"] = os.path.join(work, "audio.wav")
+            pc.extract_audio(sess["video_path"], sess["audio_path"], log=self._log)
+            sess["duration"] = pc.probe_duration(sess["audio_path"])
+            try:
+                sess["video_has_stream"] = pc.has_video_stream(sess["video_path"])
+            except Exception:
+                sess["video_has_stream"] = False
+            self._log(t("log_novoc"))
 
-        tracks = []
-        used = set()
-        for i, tr in enumerate(info["tracks"][:MAX_TRACKS]):
-            col = tr.get("color")
-            if col not in TRACK_COLORS or col in used:
-                free = [c for c in TRACK_COLORS if c not in used]
-                col = free[0] if free else TRACK_COLORS[i % MAX_TRACKS]
-            used.add(col)
-            tracks.append({"name": str(tr.get("name") or t("track_new", i + 1)),
-                           "color": col})
-        if not tracks:
-            tracks = [{"name": t("track_default"), "color": TRACK_COLORS[0]}]
-        clips = []
-        for c in info["clips"]:
-            c["track"] = min(c["track"], len(tracks) - 1)
-            c["end"] = min(c["end"], self.duration) if self.duration else c["end"]
-            if c["end"] - c["start"] >= 0.05:
-                clips.append(c)
-        self.clips = []
-        self.tracks = tracks
-        self.clips = clips
-        meta = info.get("meta") or {}
-        self._opened_meta = {"name": os.path.basename(folder),
-                             "author": meta.get("author", ""),
-                             "url": meta.get("source_url", ""),
-                             "offset": float(meta.get("offset", 0.0) or 0.0),
-                             "vheight": str(meta.get("vheight", "") or "")}
-        self.src_offset = self._opened_meta["offset"]
-        self.source_url = self._opened_meta["url"]
-        self._set_status(t("st_opened", len(clips), len(tracks)), 100)
+            self._phase(t("st_wave"), 50, 90)
+            sess["wave_data"], sess["wave_sr"] = pc.load_mono(sess["audio_path"])
+
+            tracks = []
+            used = set()
+            for i, tr in enumerate(info["tracks"][:MAX_TRACKS]):
+                col = tr.get("color")
+                if col not in TRACK_COLORS or col in used:
+                    free = [c for c in TRACK_COLORS if c not in used]
+                    col = free[0] if free else TRACK_COLORS[i % MAX_TRACKS]
+                used.add(col)
+                tracks.append({"name": str(tr.get("name") or t("track_new", i + 1)),
+                               "color": col})
+            if not tracks:
+                tracks = [{"name": t("track_default"), "color": TRACK_COLORS[0]}]
+            clips = []
+            dur = sess["duration"]
+            for c in info["clips"]:
+                c["track"] = min(c["track"], len(tracks) - 1)
+                c["end"] = min(c["end"], dur) if dur else c["end"]
+                if c["end"] - c["start"] >= 0.05:
+                    clips.append(c)
+            sess["tracks"], sess["clips"] = tracks, clips
+            meta = info.get("meta") or {}
+            sess["meta"] = {"name": os.path.basename(folder),
+                            "author": meta.get("author", ""),
+                            "url": meta.get("source_url", ""),
+                            "offset": float(meta.get("offset", 0.0) or 0.0),
+                            "vheight": str(meta.get("vheight", "") or ""),
+                            "folder": folder}
+            sess["src_offset"] = sess["meta"]["offset"]
+            sess["source_url"] = sess["meta"]["url"]
+            self._pending_session = sess
+            self._set_status(t("st_opened", len(clips), len(tracks)), 100)
+        except BaseException:
+            shutil.rmtree(work, ignore_errors=True)
+            raise
 
     def _after_open(self):
-        m = getattr(self, "_opened_meta", {})
+        sess = getattr(self, "_pending_session", None)
+        m = (sess or {}).get("meta") or {}
+        self._opened_meta = m
         self.pack_name.set(m.get("name") or self.pack_name.get())
         if m.get("author"):
             self.author.set(m["author"])
         if m.get("url"):
+            self._span_url = m["url"]
             self.url_var.set(m["url"])
             self.src_mode.set("url")
             self._sync_src()
         if m.get("vheight") in ("1080", "720", "540", "480", "360"):
             self.vheight.set(m["vheight"])
         self._after_analyze()
+        self._auto_detect_ok = False      # geladene Clips nicht ueberschreiben
 
     # ---------------------------------------------------------- Erkennung
-    def redetect(self):
+    def redetect(self, quiet=False):
         if not len(self.wave_data):
-            messagebox.showinfo(t("dlg_first_t"), t("dlg_first"))
+            if not quiet:
+                messagebox.showinfo(t("dlg_first_t"), t("dlg_first"))
             return
-        if self.clips and (len(self.tracks) > 1 or
-                           any(c.get("caption") for c in self.clips)):
+        if not quiet and self.clips and (len(self.tracks) > 1 or
+                                         any(c.get("caption") for c in self.clips)):
             if not messagebox.askyesno(t("dlg_track_t"), t("dlg_redetect")):
                 return
         found = pc.detect_clips(self.wave_data, self.wave_sr,
                                 max_clip=float(self.maxlen.get()),
                                 sensitivity=float(self.sens.get()))
+        old = list(self.clips)
         self._snapshot()
-        self.clips = [{"start": a, "end": b, "track": 0, "caption": ""}
-                      for (a, b) in found]
+        new = []
+        for a, b in found:
+            best, best_ov = None, 0.0
+            for c in old:
+                ov = min(b, c["end"]) - max(a, c["start"])
+                if ov > best_ov:
+                    best, best_ov = c, ov
+            # Spur und Untertitel vom Clip mit der groessten Ueberlappung
+            # uebernehmen / carry track + caption from the best overlap
+            new.append({"start": a, "end": b,
+                        "track": best["track"] if best else 0,
+                        "caption": best.get("caption", "") if best else ""})
+        self.clips = new
         self.selected = 0 if self.clips else None
         self._log(t("log_redet", len(self.clips)))
         self.refresh_list()
         self.draw_wave()
+
+    def _detect_setting_changed(self):
+        """Regler im Erkennungs-Menue: solange nichts von Hand geaendert
+        wurde, gleich neu erkennen. / auto re-run while nothing is edited."""
+        if self._auto_detect_ok and not self.dirty and len(self.wave_data):
+            self.redetect(quiet=True)
+            self.dirty = False
+            self._undo.clear()
+            self._update_undo_buttons()
 
     # -------------------------------------------------------------- Spuren
     def _new_track(self, name, idx=None, color=None):
@@ -1819,6 +2188,8 @@ class App(tk.Tk):
                     ov += 1
         if ov:
             txt += "  ·  " + t("overlap_note", ov)
+        if len(self.tracks) > 1:
+            txt += "  ·  " + t("stats_parts", pc.disdubs_parts(self.tracks, self.clips))
         self.stats_lbl.configure(text=txt)
 
     def _tree_select(self, _e=None):
@@ -1843,7 +2214,7 @@ class App(tk.Tk):
             self.track_var.set("")
             self.start_var.set("")
             self.end_var.set("")
-            self.preview.delete("all")
+            self._preview_placeholder("preview_pick")
             self._preview_key = None
             return
         self.insp_title.configure(text=t("insp_title", self.selected + 1,
@@ -1913,9 +2284,16 @@ class App(tk.Tk):
         self.caption_entry.selection_range(0, "end")
 
     # ---- Standbild / frame preview
+    def _preview_placeholder(self, key):
+        self.preview.delete("all")
+        w = int(self.preview.cget("width"))
+        h = int(self.preview.cget("height"))
+        self.preview.create_text(w // 2, h // 2, text=t(key), fill="#4a5070",
+                                 font=(FONT, 9))
+
     def _schedule_preview(self, clip):
         if not (self.video_path and self.video_has_stream):
-            self.preview.delete("all")
+            self._preview_placeholder("preview_none")
             return
         tt = clip["start"] + min(0.4, (clip["end"] - clip["start"]) / 2.0)
         key = int(round(tt * 5))
@@ -1944,8 +2322,10 @@ class App(tk.Tk):
         threading.Thread(target=work, daemon=True).start()
 
     def _show_preview(self, key, path):
+        if not os.path.isfile(path):
+            return
         self._preview_cache[key] = path
-        if key != self._preview_key or not os.path.isfile(path):
+        if key != self._preview_key:
             return
         try:
             img = tk.PhotoImage(file=path)
@@ -2016,7 +2396,8 @@ class App(tk.Tk):
         lst = sorted((c for c in self.clips if c["track"] == i),
                      key=lambda c: c["start"])
         if lst:
-            self._play_range(lst[0]["start"], lst[-1]["end"])
+            a = lst[0]["start"]
+            self._play_range(a, min(lst[-1]["end"], a + 90.0))
 
     def _play_range(self, a, b):
         """
@@ -2033,6 +2414,8 @@ class App(tk.Tk):
             return
         self._play_token += 1
         token = self._play_token
+        old_dir = os.path.join(self.work, "play_%d" % (token - 1))
+        shutil.rmtree(old_dir, ignore_errors=True)
         self._play_frames = None
         self._play_frame_idx = -1
         self.play_btn.configure(text="■  " + t("btn_stop"))
@@ -2576,6 +2959,7 @@ class App(tk.Tk):
             self._play_range(a, min(self.duration, a + 8.0))
 
     def _canvas_right(self, event):
+        self._caption_save()
         kind, ref = self._hit(event.x, event.y)
         if kind == "gutter" or (kind in ("lane", "body", "edge_start", "edge_end")
                                 and self.tracks):
@@ -2674,118 +3058,245 @@ class App(tk.Tk):
         self.draw_wave()
 
     # -------------------------------------------------------------- BAUEN
-    def start_build(self):
+    def start_build(self, then=None):
         self._caption_save()
         if not self.clips:
             messagebox.showinfo(t("dlg_noclips_t"), t("dlg_noclips"))
             return
         name = pc.safe_name(self.pack_name.get(), "Mein_Pack")
         self.pack_name.set(name)
+        dub = bool(self.is_dub.get())
+
+        # --- Vorabpruefung / pre-flight (DisDubs + DubStage)
+        default_names = (t("track_default"), "Voice", "Stimme") + \
+            tuple(t("track_new", i) for i in range(1, MAX_TRACKS + 1))
+        warns = pc.disdubs_check(
+            self.tracks, self.clips, duration=self.duration, dub=dub,
+            has_backing=bool(self.backing_path), has_video=self.video_has_stream,
+            default_names=default_names)
+        if warns:
+            body = "\n".join("• " + w for w in warns[:8])
+            if not messagebox.askyesno(t("dlg_check_t"), t("dlg_check", body)):
+                return
+
+        # --- vorhandener Pack / existing pack
+        os.makedirs(OUT_DIR, exist_ok=True)
+        dest = os.path.join(OUT_DIR, name)
+        opened = (getattr(self, "_opened_meta", None) or {}).get("folder")
+        same_as_opened = opened and os.path.normcase(os.path.abspath(opened)) == \
+            os.path.normcase(os.path.abspath(dest))
+        if os.path.exists(dest) and dest != self.built_path and not same_as_opened:
+            alt = name
+            k = 2
+            while os.path.exists(os.path.join(OUT_DIR, alt)):
+                alt = "%s_%d" % (name, k)
+                k += 1
+            if not messagebox.askyesno(t("dlg_exists_t"), t("dlg_exists", name, alt)):
+                name = alt
+                self.pack_name.set(name)
+
         self._save_cfg()
         clips = sorted([dict(c) for c in self.clips],
                        key=lambda c: (c["start"], c["track"]))
         tracks = [dict(tr) for tr in self.tracks]
-        self._bg(lambda: self._do_build(name, clips, tracks),
-                 on_done=self._after_build)
+        opts = {"dub": dub, "author": self.author.get().strip(),
+                "vheight": int(self.vheight.get()),
+                "has_video": self.video_has_stream}
+        self._build_then = then
+        self.built_path = None
+        self._bg(lambda: self._do_build(name, clips, tracks, opts),
+                 on_done=self._after_build, what=t("build"))
 
-    def _do_build(self, name, clips, tracks):
+    def _do_build(self, name, clips, tracks, opts):
         captions = {}
         os.makedirs(OUT_DIR, exist_ok=True)
-        dest = os.path.join(OUT_DIR, name)
+        final = os.path.join(OUT_DIR, name)
+        # Erst in einen Nebenordner bauen, dann tauschen: ein Abbruch laesst
+        # den alten Pack heil. / build beside, swap on success
+        dest = final + ".building"
         if os.path.exists(dest):
             shutil.rmtree(dest)
         os.makedirs(dest)
-        dub = bool(self.is_dub.get())
+        dub = opts["dub"]
         src_audio = self.vocals_path or self.audio_path
-        author = self.author.get().strip()
+        author = opts["author"]
+        try:
+            lines = [t("ts_head", name)]
+            total = len(clips)
+            for i, c in enumerate(clips, 1):
+                speaker = tracks[c["track"]]["name"] if 0 <= c["track"] < len(tracks) \
+                    else "Voice"
+                fn = pc.clip_filename(i, speaker, c["start"], dub=dub)
+                c["file"] = fn
+                self._set_status(t("st_clip", i, total), 3 + 45 * i / max(1, total))
+                pc.export_clip(src_audio, c["start"], c["end"],
+                               os.path.join(dest, fn))
+                cap = (c.get("caption") or "").strip()
+                if cap:
+                    captions[fn] = cap
+                lines.append("%-44s %10.3f   %5.2fs   %-16s%s"
+                             % (fn, c["start"], c["end"] - c["start"], speaker,
+                                "   | " + cap if cap else ""))
+                self._log("  %s   @ %.3f s%s" % (fn, c["start"],
+                                                 "   | " + cap if cap else ""))
 
-        lines = [t("ts_head", name)]
-        total = len(clips)
-        for i, c in enumerate(clips, 1):
-            speaker = tracks[c["track"]]["name"] if 0 <= c["track"] < len(tracks) \
-                else "Voice"
-            fn = pc.clip_filename(i, speaker, c["start"], dub=dub)
-            c["file"] = fn
-            self._set_status(t("st_clip", i, total), 5 + 60 * i / max(1, total))
-            pc.export_clip(src_audio, c["start"], c["end"],
-                           os.path.join(dest, fn))
-            cap = (c.get("caption") or "").strip()
-            if cap:
-                captions[fn] = cap
-            lines.append("%-44s %10.3f   %5.2fs   %-16s%s"
-                         % (fn, c["start"], c["end"] - c["start"], speaker,
-                            "   | " + cap if cap else ""))
-            self._log("  %s   @ %.3f s%s" % (fn, c["start"],
-                                             "   | " + cap if cap else ""))
+            if captions:
+                pc.write_captions(dest, captions)
+                self._log("  %s (%d)" % (pc.CAPTION_FILE, len(captions)))
 
-        if captions:
-            pc.write_captions(dest, captions)
-            self._log("  %s (%d)" % (pc.CAPTION_FILE, len(captions)))
+            if dub and self.backing_path and os.path.isfile(self.backing_path):
+                self._phase(t("st_backing"), 48, 55)
+                pc.export_backing_track(self.backing_path,
+                                        os.path.join(dest, "_backing_track.wav"),
+                                        log=self._log)
+                self._log("  _backing_track.wav")
 
-        if dub and self.backing_path and os.path.isfile(self.backing_path):
-            self._set_status(t("st_backing"), 68)
-            pc.export_backing_track(self.backing_path,
-                                    os.path.join(dest, "_backing_track.wav"),
-                                    log=self._log)
-            self._log("  _backing_track.wav")
-
-        if dub:
-            out_video = os.path.join(dest, "dub_video.mp4")
-            if self.video_from_pack:
-                # Schon ein fertiges Pack-Video: nicht noch einmal kodieren.
-                # Already a finished pack video: do not re-encode it.
-                self._set_status(t("st_video_copy"), 72)
-                shutil.copy2(self.video_path, out_video)
-            else:
-                self._set_status(t("st_video"), 72)
-                pc.convert_video(self.video_path, out_video,
-                                 max_height=int(self.vheight.get()), log=self._log)
-            self._log("  dub_video.mp4")
-            with open(os.path.join(dest, "_TIMESTAMPS.txt"), "w",
-                      encoding="utf-8") as f:
-                f.write("\n".join(lines) + "\n")
-
-        speakers = ", ".join(tr["name"] for tr in tracks)
-        pc.write_pack_info(dest, name.replace("_", " "),
-                           [author] if author else None)
-        pc.write_project(dest, {
-            "version": 1,
-            "app": "DubForge",
-            "tracks": tracks,
-            "clips": [{"start": round(c["start"], 3), "end": round(c["end"], 3),
-                       "track": c["track"], "caption": c.get("caption", ""),
-                       "file": c.get("file", "")} for c in clips],
-            "meta": {"author": author, "source_url": self.source_url,
-                     "offset": self.src_offset, "vheight": self.vheight.get(),
-                     "dub": dub},
-        })
-        with open(os.path.join(dest, "_README.txt"), "w", encoding="utf-8") as f:
-            f.write(t("readme", name,
-                      t("type_dub") if dub else t("type_voice"), len(clips),
-                      speakers))
+            if dub and opts["has_video"]:
+                out_video = os.path.join(dest, "dub_video.mp4")
+                if self.video_from_pack:
+                    self._phase(t("st_video_copy"), 55, 95)
+                    shutil.copy2(self.video_path, out_video)
+                else:
+                    self._phase(t("st_video"), 55, 95)
+                    pc.convert_video(self.video_path, out_video,
+                                     max_height=opts["vheight"], log=self._log,
+                                     progress=self._set_progress)
+                self._log("  dub_video.mp4")
+            elif dub:
+                self._log(t("st_novideo"))
             if dub:
-                f.write(t("readme_dub"))
+                with open(os.path.join(dest, "_TIMESTAMPS.txt"), "w",
+                          encoding="utf-8") as f:
+                    f.write("\n".join(lines) + "\n")
 
-        self.built_path = dest
-        self._set_status(t("st_built", dest), 100)
+            speakers = ", ".join(tr["name"] for tr in tracks)
+            pc.write_pack_info(dest, name.replace("_", " "),
+                               [author] if author else None)
+            pc.write_project(dest, {
+                "version": 1,
+                "app": "DubForge",
+                "dubforge_version": upd.VERSION,
+                "tracks": tracks,
+                "clips": [{"start": round(c["start"], 3), "end": round(c["end"], 3),
+                           "track": c["track"], "caption": c.get("caption", ""),
+                           "file": c.get("file", "")} for c in clips],
+                "meta": {"author": author, "source_url": self.source_url,
+                         "offset": self.src_offset, "vheight": str(opts["vheight"]),
+                         "dub": dub},
+            })
+            with open(os.path.join(dest, "_README.txt"), "w", encoding="utf-8") as f:
+                f.write(t("readme", name,
+                          t("type_dub") if dub else t("type_voice"), len(clips),
+                          speakers))
+                if dub:
+                    f.write(t("readme_dub"))
+
+            # tauschen / swap
+            self._set_status(t("st_built", final), 98)
+            if os.path.exists(final):
+                shutil.rmtree(final)
+            os.replace(dest, final)
+        except BaseException:
+            shutil.rmtree(dest, ignore_errors=True)
+            raise
+        self._built_result = (final, dub, len(clips), len(tracks))
+        self._set_status(t("st_built", final), 100)
 
     def _after_build(self):
+        res = getattr(self, "_built_result", None)
+        if not res:
+            return
+        self._built_result = None
+        path, dub, n_clips, n_tracks = res
+        self.built_path = path
+        self.built_dub = dub
+        self.built_info = (time.strftime("%H:%M"), n_clips)
         self.dirty = False
-        path = self.built_path
-        if path:
-            if messagebox.askyesno(t("dlg_done_t"), t("dlg_done", path)):
-                self.install()
-            else:
-                self._open_folder(path)
+        self._update_built_label()
+        then = getattr(self, "_build_then", None)
+        self._build_then = None
+        if then:
+            then()
+            return
+        self._built_dialog(path, dub, n_clips, n_tracks)
 
-    def zip_pack(self):
+    def _update_built_label(self):
+        try:
+            if self.built_info and self.built_path:
+                self.built_lbl.configure(text=t("built_at", *self.built_info))
+            else:
+                self.built_lbl.configure(text="")
+        except Exception:
+            pass
+
+    def _built_dialog(self, path, dub, n_clips, n_tracks):
+        """Drei Wege nach dem Bauen: ZIP fuer DisDubs, Ordner, Schliessen."""
+        parts = t("dlg_built_parts", pc.disdubs_parts(self.tracks, self.clips)) \
+            if dub and n_tracks > 1 else ""
+        dlg = tk.Toplevel(self)
+        dlg.title(t("dlg_built_t"))
+        dlg.configure(bg=BG)
+        dlg.transient(self)
+        dlg.resizable(False, False)
+        frm = ttk.Frame(dlg, padding=16)
+        frm.pack(fill="both", expand=True)
+        ttk.Label(frm, text=t("dlg_built", path, n_clips, n_tracks, parts),
+                  wraplength=520, justify="left").pack(anchor="w")
+        row = ttk.Frame(frm)
+        row.pack(fill="x", pady=(14, 0))
+
+        def close():
+            dlg.destroy()
+
+        def do_zip():
+            close()
+            self.zip_pack()
+
+        def do_open():
+            close()
+            self._open_folder(path)
+        if dub:
+            ttk.Button(row, text=t("btn_zip_now"), style="Go.TButton",
+                       command=do_zip).pack(side="left")
+        ttk.Button(row, text=t("btn_open_folder"),
+                   command=do_open).pack(side="left", padx=8)
+        ttk.Button(row, text=t("install"), command=lambda: (close(), self.install())
+                   ).pack(side="left")
+        ttk.Button(row, text=t("btn_close"), command=close).pack(side="right")
+        dlg.bind("<Escape>", lambda e: close())
+        dlg.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - dlg.winfo_width()) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - dlg.winfo_height()) // 3
+        dlg.geometry("+%d+%d" % (max(0, x), max(0, y)))
+        dlg.grab_set()
+        dlg.focus_set()
+
+    def _ensure_built(self, then):
+        """Zip/Copy: gebaut und aktuell? Sonst anbieten, erst zu bauen."""
         path = self.built_path
         if not path or not os.path.isdir(path):
-            messagebox.showinfo(t("dlg_nobuild_t"), t("dlg_nobuild"))
+            if self.clips:
+                if messagebox.askyesno(t("dlg_nobuild_t"), t("dlg_rebuild")):
+                    self.start_build(then=then)
+            else:
+                messagebox.showinfo(t("dlg_nobuild_t"), t("dlg_nobuild"))
+            return False
+        if self.dirty:
+            if messagebox.askyesno(t("dlg_rebuild_t"), t("dlg_rebuild")):
+                self.start_build(then=then)
+                return False
+        return True
+
+    def zip_pack(self):
+        if not self._ensure_built(self.zip_pack):
+            return
+        path = self.built_path
+        if not self.built_dub:
+            messagebox.showinfo(t("zip"), t("dlg_voice_zip"))
             return
 
         def work():
-            self._set_status(t("st_zip"), 40)
+            self._set_status(t("st_zip"), None)
             self._zip_path = pc.zip_pack(path)
             self._set_status(t("st_zipped", self._zip_path), 100)
 
@@ -2795,13 +3306,12 @@ class App(tk.Tk):
                 self._log(t("st_zipped", z))
                 if messagebox.askyesno(t("dlg_done_t"), t("dlg_zip_done", z)):
                     self._open_folder(os.path.dirname(z))
-        self._bg(work, on_done=done)
+        self._bg(work, on_done=done, what=t("zip"))
 
     def install(self):
-        path = self.built_path
-        if not path or not os.path.isdir(path):
-            messagebox.showinfo(t("dlg_nobuild_t"), t("dlg_nobuild"))
+        if not self._ensure_built(self.install):
             return
+        path = self.built_path
         target = self.target_dir.get().strip()
         if not target or not os.path.isdir(target):
             self._pick_target()
@@ -2845,23 +3355,75 @@ class App(tk.Tk):
         save_cfg(self.cfg)
 
     def destroy(self):
-        try:
-            if self._pump_id:
-                self.after_cancel(self._pump_id)
-        except Exception:
-            pass
+        for attr in ("_pump_id", "_upd_id"):
+            try:
+                if getattr(self, attr, None):
+                    self.after_cancel(getattr(self, attr))
+            except Exception:
+                pass
         self._pump_id = None
         super().destroy()
 
     def _on_close(self):
-        if self.clips and self.dirty:
+        if self.busy:
+            if not messagebox.askyesno(t("dlg_abort_t"),
+                                       t("dlg_abort", self.busy_what or "?")):
+                return
+            pc.cancel()
+        elif self.clips and self.dirty:
             if not messagebox.askyesno(t("dlg_unsaved_t"), t("dlg_unsaved")):
                 return
         self._save_cfg()
         self._stop_play()
+        pc.cancel()
         shutil.rmtree(self.work, ignore_errors=True)
+        try:
+            if self._logfile:
+                self._logfile.close()
+        except Exception:
+            pass
         self.destroy()
+
+    # ---- Von/Bis leeren, wenn ein anderer Link kommt / clear span on new URL
+    def _url_span_guard(self):
+        self._span_url = self.url_var.get().strip()
+
+        def changed(*_a):
+            cur = self.url_var.get().strip()
+            if cur == self._span_url:
+                return
+            if self.src_mode.get() == "url" and self._span_url and \
+                    (self.t_start.get().strip() or self.t_end.get().strip()):
+                self.t_start.set("")
+                self.t_end.set("")
+            self._span_url = cur
+        try:
+            self.url_var.trace_add("write", changed)
+        except Exception:
+            pass
+
+
+def _main():
+    try:
+        app = App()
+    except Exception:
+        # Schon der Start ging schief: wenigstens sagen, warum.
+        # Even the start failed: at least say why.
+        err = traceback.format_exc()
+        try:
+            with open(LOG_PATH, "a", encoding="utf-8") as f:
+                f.write(err)
+        except Exception:
+            pass
+        try:
+            r = tk.Tk()
+            r.withdraw()
+            messagebox.showerror("DubForge", err[-1500:])
+        except Exception:
+            pass
+        raise
+    app.mainloop()
 
 
 if __name__ == "__main__":
-    App().mainloop()
+    _main()

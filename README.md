@@ -93,6 +93,10 @@ Nothing is sent, no account is involved. To switch it off, set
 
 The interface is available in German and English, switchable at runtime in the top right of either tool.
 
+## Reporting a bug
+
+Every session is written to `dubforge.log` next to the program, and the same text is in the collapsible **Log ▾** at the bottom of the window. If something misbehaves, paste the tail of that log with the version from the title bar. Uploads into DisDubs happen from its scene picker — build, **Zip for DisDubs**, then drop the zip there.
+
 ## Tests
 
 ```

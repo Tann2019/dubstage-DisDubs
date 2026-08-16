@@ -41,6 +41,9 @@ def load_app_module():
     return mod
 
 
+BUILD_OPTS = {"dub": True, "author": "Tester", "vheight": 720, "has_video": True}
+
+
 class E:
     """Minimales Maus-Event / minimal mouse event."""
     def __init__(self, x, y):
@@ -140,6 +143,53 @@ class AppSmoke(unittest.TestCase):
         kind, ref = app._hit(20, app._lane_top(0) + 10)
         self.assertEqual((kind, ref), ("gutter", 0))
 
+    def test_tools_missing_state(self):
+        app = self.app
+        app._on_tools({"ffmpeg": False, "ytdlp": False, "demucs": False},
+                      None, None, None)
+        app.update()
+        self.assertEqual(str(app.analyze_btn.cget("state")), "disabled")
+        self.assertTrue(app.warn_lbl.winfo_ismapped())
+        self.assertFalse(app.sep_var.get())
+        self.assertEqual(str(app.sep_chk.cget("state")), "disabled")
+        app._on_tools({"ffmpeg": True, "ytdlp": True, "demucs": True},
+                      (True, True), "2026.08.01", 3)
+        app.update()
+        self.assertEqual(str(app.analyze_btn.cget("state")), "normal")
+        self.assertFalse(app.warn_lbl.winfo_ismapped())
+
+    def test_pump_survives_bad_callback(self):
+        app = self.app
+
+        def boom():
+            raise RuntimeError("callback exploded")
+        app.msgq.put(("done", boom))
+        app.update(); time.sleep(0.15); app.update()
+        app.msgq.put(("log", "still alive"))
+        time.sleep(0.15); app.update()
+        self.assertIn("still alive", app.log.get("1.0", "end"))
+        self.assertIsNotNone(app._pump_id)
+
+    def test_redetect_keeps_track_and_caption(self):
+        app = self.app
+        app.add_track("Otacon")
+        app.clips[1]["track"] = 1
+        app.clips[1]["caption"] = "kept"
+        app.redetect(quiet=True)
+        near = [c for c in app.clips if abs(c["start"] - 4.0) < 1.0]
+        self.assertTrue(near)
+        self.assertEqual(near[0]["track"], 1)
+        self.assertEqual(near[0]["caption"], "kept")
+
+    def test_url_change_clears_span(self):
+        app = self.app
+        app.src_mode.set("url")
+        app.url_var.set("https://youtu.be/one"); app.update()
+        app.t_start.set("1:00"); app.t_end.set("2:00")
+        app.url_var.set("https://youtu.be/two"); app.update()
+        self.assertEqual(app.t_start.get(), "")
+        self.assertEqual(app.t_end.get(), "")
+
     def test_track_menu_ops(self):
         app = self.app
         app.add_track("B")
@@ -180,7 +230,8 @@ class FullRun(unittest.TestCase):
         try:
             app.update()
             app.sep_var.set(False)
-            app._do_analyze(self.video, "file", None, None, False)
+            app._do_analyze(self.video, "file", None, None, False,
+                            {"maxlen": 6.0, "sens": 1.0})
             app._after_analyze(); app.update()
             self.assertEqual(len(app.clips), 3)
             self.assertTrue(app.video_has_stream)
@@ -216,8 +267,12 @@ class FullRun(unittest.TestCase):
             app.pack_name.set("Run"); app.author.set("Tester")
             clips = sorted([dict(x) for x in app.clips],
                            key=lambda x: (x["start"], x["track"]))
-            app._do_build("Run", clips, [dict(t) for t in app.tracks])
+            app._do_build("Run", clips, [dict(t) for t in app.tracks], BUILD_OPTS)
+            app._build_then = lambda: None       # kein Dialog im Test / no dialog
+            app._after_build()
             dest = app.built_path
+            self.assertTrue(dest and os.path.isdir(dest))
+            self.assertFalse(os.path.isdir(dest + ".building"))
             files = sorted(os.listdir(dest))
             self.assertIn("01_Snake_0-940.wav", files)
             self.assertIn("02_Otacon_1-800.wav", files)
@@ -248,14 +303,46 @@ class FullRun(unittest.TestCase):
             self.assertTrue(app.video_from_pack)
             clips = sorted([dict(x) for x in app.clips],
                            key=lambda x: (x["start"], x["track"]))
-            app._do_build("Run", clips, [dict(t) for t in app.tracks])
+            app._do_build("Run", clips, [dict(t) for t in app.tracks], BUILD_OPTS)
+            app._build_then = lambda: None
+            app._after_build()
             self.assertTrue(os.path.isfile(os.path.join(dest, "dub_video.mp4")))
+            self.assertEqual(app.built_path, dest)
 
             # Wiedergabe nach dem Wiederoeffnen / playback after reopening
             app._play_selected(); self.pump(0.8)
             self.assertIsNotNone(app._play)
             app._stop_play()
             self.assertIsNone(app._play)
+
+            # --- Abbrechen: ein langer ffmpeg-Job wird gekillt und die
+            #     Oberflaeche wird wieder frei / cancel kills a long job
+            long_out = os.path.join(self.d, "long.wav")
+
+            def slow():
+                pc.run([pc.ffmpeg(), "-y", "-loglevel", "error", "-re", "-f", "lavfi",
+                        "-i", "sine=frequency=440:duration=600",
+                        "-c:a", "pcm_s16le", long_out], log=app._log)
+            app._bg(slow, what="slow")
+            self.pump(0.6)
+            self.assertTrue(app.busy)
+            app.cancel_job()
+            self.pump(1.5)
+            self.assertFalse(app.busy, "cancel did not free the UI")
+            self.assertEqual(str(app.cancel_btn.cget("state")), "disabled")
+
+            # --- fehlgeschlagene Analyse laesst die Sitzung heil /
+            #     a failed analyse keeps the session intact
+            n_before = len(app.clips)
+            work_before = app.work
+            try:
+                app._do_analyze(os.path.join(self.d, "nope.mp4"), "file",
+                                None, None, False, {"maxlen": 6.0, "sens": 1.0})
+            except Exception:
+                pass
+            self.assertEqual(len(app.clips), n_before)
+            self.assertEqual(app.work, work_before)
+            self.assertTrue(os.path.isfile(app.audio_path))
         finally:
             app.dirty = False
             app.destroy()

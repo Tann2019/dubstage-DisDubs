@@ -58,9 +58,90 @@ _MSG = {
         "Demucs did not produce a vocals file."),
     "no_theora": (
         "Dieser ffmpeg kann kein OGV schreiben (libtheora/libvorbis fehlt).\n"
-        "Bitte Setup.bat ausfuehren oder MP4 als Format waehlen.",
+        "Bitte Setup.bat ausfuehren.",
         "This ffmpeg cannot write OGV (libtheora/libvorbis missing).\n"
-        "Please run Setup.bat or choose MP4 as the format."),
+        "Please run Setup.bat."),
+    "cancelled": (
+        "Abgebrochen.",
+        "Cancelled."),
+    "yt_signin": (
+        "YouTube verlangt eine Anmeldung fuer dieses Video (\"Sign in to "
+        "confirm\"). Das passiert bei Altersfreigaben oder wenn YouTube den "
+        "Rechner fuer einen Bot haelt. Ein anderes Video probieren, oder das "
+        "Video im Browser laden und als Datei waehlen.",
+        "YouTube wants a sign-in for this video (\"Sign in to confirm\"). "
+        "That happens with age-restricted videos or when YouTube suspects a "
+        "bot. Try another video, or download it in the browser and choose it "
+        "as a file."),
+    "yt_unavail": (
+        "Das Video ist nicht verfuegbar (privat, geloescht oder in deiner "
+        "Region gesperrt).",
+        "The video is unavailable (private, removed or blocked in your "
+        "region)."),
+    "yt_403": (
+        "YouTube hat den Download abgewiesen (HTTP 403). Meist hilft ein "
+        "aktuelles yt-dlp; sonst spaeter noch einmal versuchen.",
+        "YouTube refused the download (HTTP 403). An up-to-date yt-dlp "
+        "usually fixes it; otherwise try again later."),
+    "yt_extract": (
+        "yt-dlp konnte die YouTube-Seite nicht auslesen. YouTube aendert "
+        "staendig etwas - fast immer hilft 'yt-dlp aktualisieren'.",
+        "yt-dlp could not read the YouTube page. YouTube keeps changing "
+        "things - 'Update yt-dlp' almost always fixes this."),
+    "yt_bad_url": (
+        "Das sieht nicht nach einem gueltigen Link aus.",
+        "That does not look like a valid link."),
+    "yt_network": (
+        "Keine Verbindung zu YouTube (Netzwerk oder DNS).",
+        "No connection to YouTube (network or DNS)."),
+    # DisDubs-Vorabpruefung / DisDubs pre-flight
+    "dd_one_part": (
+        "DisDubs wird alles als EINE Rolle besetzen: %d Sprecher bei %d Clips. "
+        "Die Regel dort: hoechstens halb so viele Sprecher wie Clips.",
+        "DisDubs will cast everything as ONE part: %d speakers over %d clips. "
+        "Its rule: at most half as many speakers as clips."),
+    "dd_long_name": (
+        "Sprechername laenger als 40 Zeichen - DisDubs ignoriert dann alle "
+        "Namen: %s",
+        "Speaker name longer than 40 characters - DisDubs then ignores all "
+        "names: %s"),
+    "dd_bad_name": (
+        "Sprechername ergibt keinen brauchbaren Dateinamen (nur Sonderzeichen): %s",
+        "Speaker name leaves no usable file name (symbols only): %s"),
+    "dd_collide": (
+        "Zwei Spuren ergeben denselben Dateinamen: %s",
+        "Two tracks produce the same file-name label: %s"),
+    "dd_default_name": (
+        "Spur heisst noch '%s' - nach dem Sprecher benennen, damit DisDubs "
+        "die Rollen verteilen kann.",
+        "Track is still called '%s' - name it after the speaker so DisDubs "
+        "can cast the parts."),
+    "dd_no_backing": (
+        "Kein _backing_track (Stimmen wurden nicht getrennt) - in DisDubs "
+        "laeuft dann kein Musikbett unter der Aufnahme.",
+        "No _backing_track (vocals were not separated) - DisDubs will have no "
+        "music bed under the recording."),
+    "dd_too_long": (
+        "Szene ist %s lang. DisDubs nimmt auf freien Servern zurzeit bis 3:00 "
+        "an (Studio Pro 10:00) - laengere werden nach dem Hochladen abgelehnt.",
+        "Scene is %s long. DisDubs currently accepts up to 3:00 on free servers "
+        "(Studio Pro 10:00) - longer ones are refused after the upload."),
+    "dd_overlap": (
+        "%d Clip(s) enden bis zu 1 s in den naechsten hinein - DisDubs kuerzt "
+        "so kurze Ueberschneidungen als Nachhall.",
+        "%d clip(s) end up to 1 s into the next one - DisDubs trims such short "
+        "overlaps as trailing silence."),
+    "dd_no_video": (
+        "Die Quelle hat kein Bild - ohne dub_video koennen DubStage und "
+        "DisDubs den Pack nicht abspielen.",
+        "The source carries no picture - without dub_video neither DubStage "
+        "nor DisDubs can play the pack."),
+    "dd_short_clip": (
+        "%d Clip(s) kuerzer als 0,3 s.",
+        "%d clip(s) shorter than 0.3 s."),
+    "dd_no_caption": (
+        "%d von %d Clips ohne Untertitel.",
+        "%d of %d clips without a subtitle."),
     "bad_time": (
         "Zeitangabe nicht verstanden: %r",
         "Could not understand the time value: %r"),
@@ -167,16 +248,61 @@ def ffplay():
     return find_tool("ffplay")
 
 
-def ytdlp():
+_YTDLP_CACHE = {}
+
+
+def ytdlp(refresh=False):
+    """Kommando fuer yt-dlp; wird gemerkt, weil die Suche langsam ist."""
+    if not refresh and "cmd" in _YTDLP_CACHE:
+        return _YTDLP_CACHE["cmd"]
     p = find_tool("yt-dlp")
     if p:
-        return [p]
+        cmd = [p]
+    else:
+        try:
+            subprocess.run([sys.executable, "-m", "yt_dlp", "--version"],
+                           check=True, capture_output=True, creationflags=_NOWINDOW)
+            cmd = [sys.executable, "-m", "yt_dlp"]
+        except Exception:
+            cmd = None
+    _YTDLP_CACHE["cmd"] = cmd
+    _YTDLP_CACHE.pop("ver", None)
+    return cmd
+
+
+def has_demucs():
+    """Ist Demucs installiert? / is Demucs importable?"""
     try:
-        subprocess.run([sys.executable, "-m", "yt_dlp", "--version"],
-                       check=True, capture_output=True, creationflags=_NOWINDOW)
-        return [sys.executable, "-m", "yt_dlp"]
+        import importlib.util
+        return importlib.util.find_spec("demucs") is not None
     except Exception:
-        return None
+        return False
+
+
+def classify_ytdlp_error(text):
+    """
+    Ordnet einen yt-dlp-Fehlertext einer verstaendlichen Meldung zu.
+    Gibt (schluessel, update_hilft) oder (None, False) zurueck.
+    Maps yt-dlp output to a friendly message key; second value says whether
+    updating yt-dlp is likely to help.
+    """
+    low = (text or "").lower()
+    if "sign in to confirm" in low or "cookies" in low and "bot" in low:
+        return "yt_signin", False
+    if "video unavailable" in low or "private video" in low or \
+            "has been removed" in low or "not available in your country" in low:
+        return "yt_unavail", False
+    if "http error 403" in low or "403 forbidden" in low:
+        return "yt_403", True
+    if "unable to extract" in low or "unsupported url" in low and "youtu" in low \
+            or "failed to parse json" in low or "no video formats" in low:
+        return "yt_extract", True
+    if "is not a valid url" in low or "unsupported url" in low:
+        return "yt_bad_url", False
+    if "getaddrinfo failed" in low or "unable to download webpage" in low or \
+            "connection reset" in low or "timed out" in low:
+        return "yt_network", False
+    return None, False
 
 
 def ytdlp_version():
@@ -187,6 +313,8 @@ def ytdlp_version():
     yt = ytdlp()
     if not yt:
         return None, None
+    if "ver" in _YTDLP_CACHE:
+        return _YTDLP_CACHE["ver"]
     out = capture(list(yt) + ["--version"]).strip()
     ver = None
     for line in out.splitlines():
@@ -200,9 +328,11 @@ def ytdlp_version():
     try:
         import datetime
         d = datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-        return ver, (datetime.date.today() - d).days
+        res = (ver, (datetime.date.today() - d).days)
     except Exception:
-        return ver, None
+        res = (ver, None)
+    _YTDLP_CACHE["ver"] = res
+    return res
 
 
 def _python_beside(exe):
@@ -225,10 +355,11 @@ def update_ytdlp(log=None):
     Liegt eine eigenstaendige yt-dlp.exe im PATH, hat die Vorrang - dann
     laeuft pip ins Leere und die Version aendert sich scheinbar nicht.
     """
-    yt = ytdlp()
+    yt = ytdlp(refresh=True)
     if not yt:
         run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
             log=log, check=False)
+        ytdlp(refresh=True)
         return ytdlp_version()
 
     if len(yt) == 1:                      # eigenstaendige Datei im PATH
@@ -256,32 +387,122 @@ def update_ytdlp(log=None):
         run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
             log=log, check=False)
 
+    ytdlp(refresh=True)
     return ytdlp_version()
 
 
-def run(cmd, log=None, check=True):
-    """Fuehrt ein Kommando aus und streamt die Ausgabe an log(text)."""
+class Cancelled(Exception):
+    """Der Benutzer hat abgebrochen / the user cancelled."""
+
+
+_procs = set()          # laufende Kindprozesse / running child processes
+_cancel_flag = [False]
+
+
+def cancel():
+    """Bricht alle laufenden Kommandos ab (auch deren Kinder)."""
+    _cancel_flag[0] = True
+    for proc in list(_procs):
+        _kill_tree(proc)
+
+
+def _kill_tree(proc):
+    try:
+        if proc.poll() is not None:
+            return
+        if IS_WIN:
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                           capture_output=True, creationflags=_NOWINDOW)
+        else:
+            proc.terminate()
+    except Exception:
+        pass
+    try:
+        proc.kill()
+    except Exception:
+        pass
+
+
+def reset_cancel():
+    _cancel_flag[0] = False
+
+
+def cancelled():
+    return _cancel_flag[0]
+
+
+_YT_PCT = re.compile(r"\[download\]\s+([\d.]+)%")
+_FF_TIME = re.compile(r"time=(\d+):(\d{2}):(\d{2}(?:\.\d+)?)")
+_TQDM_PCT = re.compile(r"^\s*(\d{1,3})%\|")
+
+
+def run(cmd, log=None, check=True, progress=None, total=None):
+    """
+    Fuehrt ein Kommando aus und streamt die Ausgabe an log(text).
+    progress(0..1) bekommt Fortschritt aus yt-dlp-, ffmpeg- (mit total in
+    Sekunden) und tqdm-Ausgaben. Abbruch ueber cancel() -> Cancelled.
+    Runs a command; progress(0..1) from yt-dlp/ffmpeg/tqdm lines; cancel()
+    raises Cancelled.
+    """
+    if _cancel_flag[0]:
+        raise Cancelled(M("cancelled"))
+    cmd = [str(c) for c in cmd]
+    base = os.path.basename(cmd[0]).lower()
+    if base.startswith("ffmpeg") and "-nostdin" not in cmd:
+        cmd.insert(1, "-nostdin")
     if log:
-        log("$ " + " ".join(os.path.basename(str(c)) if i == 0 else str(c)
+        log("$ " + " ".join(os.path.basename(c) if i == 0 else c
                             for i, c in enumerate(cmd)))
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         universal_newlines=True, encoding="utf-8", errors="replace",
         creationflags=_NOWINDOW,
     )
+    _procs.add(proc)
     tail = []
-    for line in proc.stdout:
-        line = line.rstrip()
-        tail.append(line)
-        if len(tail) > 40:
-            tail.pop(0)
-        if log:
-            log(line)
-    proc.wait()
+    try:
+        for raw in proc.stdout:
+            # ffmpeg und tqdm trennen mit \r / carriage returns
+            for line in raw.replace("\r", "\n").split("\n"):
+                line = line.rstrip()
+                if not line:
+                    continue
+                tail.append(line)
+                if len(tail) > 40:
+                    tail.pop(0)
+                if progress:
+                    pct = _progress_of(line, total)
+                    if pct is not None:
+                        try:
+                            progress(pct)
+                        except Exception:
+                            pass
+                if log:
+                    log(line)
+        proc.wait()
+    finally:
+        _procs.discard(proc)
+    if _cancel_flag[0]:
+        raise Cancelled(M("cancelled"))
     if check and proc.returncode != 0:
-        raise RuntimeError(M("cmd_failed", os.path.basename(str(cmd[0])),
+        raise RuntimeError(M("cmd_failed", os.path.basename(cmd[0]),
                              "\n".join(tail[-15:])))
     return "\n".join(tail)
+
+
+def _progress_of(line, total):
+    m = _YT_PCT.search(line)
+    if m:
+        return min(1.0, float(m.group(1)) / 100.0)
+    m = _TQDM_PCT.match(line)
+    if m:
+        return min(1.0, int(m.group(1)) / 100.0)
+    if total:
+        m = _FF_TIME.search(line)
+        if m:
+            sec = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+            return max(0.0, min(1.0, sec / float(total)))
+    return None
 
 
 def capture(cmd):
@@ -291,7 +512,15 @@ def capture(cmd):
 
 
 def check_encoders():
-    """Prueft, ob der gefundene ffmpeg OGV (Theora+Vorbis) schreiben kann."""
+    """
+    Prueft die Encoder, die der Pack braucht: libx264 und aac (MP4).
+    Gibt (h264, aac) zurueck. Theora/Vorbis siehe check_ogv_encoders().
+    """
+    out = capture([ffmpeg(), "-hide_banner", "-encoders"])
+    return ("libx264" in out), (" aac " in out or "aac" in out)
+
+
+def check_ogv_encoders():
     out = capture([ffmpeg(), "-hide_banner", "-encoders"])
     return ("libtheora" in out), ("libvorbis" in out)
 
@@ -363,7 +592,7 @@ def _clear_source(workdir, stem="source."):
                 pass
 
 
-def download_youtube(url, start, end, workdir, log=None):
+def download_youtube(url, start, end, workdir, log=None, progress=None):
     """
     Laedt den gewaehlten Ausschnitt.
 
@@ -392,10 +621,13 @@ def download_youtube(url, start, end, workdir, log=None):
         try:
             run(base + ["-o", out_tmpl,
                         "--download-sections", "*%.3f-%s" % (s, e),
-                        "--force-keyframes-at-cuts", url], log=log)
+                        "--force-keyframes-at-cuts", url], log=log,
+                progress=progress)
             f = _source_file(workdir)
             if f:
                 return f
+        except Cancelled:
+            raise
         except Exception:
             pass
         if log:
@@ -404,7 +636,7 @@ def download_youtube(url, start, end, workdir, log=None):
 
     # Ganzes Video laden - hier holt yt-dlp die Daten selbst.
     full_tmpl = os.path.join(workdir, "full.%(ext)s")
-    run(base + ["-o", full_tmpl, url], log=log)
+    run(base + ["-o", full_tmpl, url], log=log, progress=progress)
     full = _source_file(workdir, "full.")
     if not full:
         raise RuntimeError(M("dl_empty"))
@@ -433,7 +665,7 @@ def trim_local(path, start, end, workdir, log=None):
     cmd += ["-i", path]
     if end is not None:
         cmd += ["-t", "%.3f" % want]
-    cmd += ["-map", "0:v:0", "-map", "0:a:0?", "-c", "copy",
+    cmd += ["-map", "0:v:0?", "-map", "0:a:0?", "-c", "copy",
             "-avoid_negative_ts", "make_zero", "-reset_timestamps", "1", out]
     try:
         run(cmd, log=log)
@@ -454,7 +686,7 @@ def trim_local(path, start, end, workdir, log=None):
     cmd += ["-i", path]
     if end is not None:
         cmd += ["-t", "%.3f" % max(0.05, float(end) - float(start or 0))]
-    cmd += ["-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-crf", "18",
+    cmd += ["-map", "0:v:0?", "-map", "0:a:0?", "-c:v", "libx264", "-crf", "18",
             "-preset", "veryfast", "-c:a", "pcm_s16le",
             "-avoid_negative_ts", "make_zero", out]
     run(cmd, log=log)
@@ -473,13 +705,14 @@ def extract_audio(video, out_wav, log=None):
 # Vocals trennen (Demucs)
 # --------------------------------------------------------------------------
 
-def separate_vocals(wav_path, workdir, log=None, model="htdemucs"):
+def separate_vocals(wav_path, workdir, log=None, model="htdemucs",
+                    progress=None):
     """Gibt (vocals_wav, no_vocals_wav) zurueck."""
     outdir = os.path.join(workdir, "demucs")
     os.makedirs(outdir, exist_ok=True)
     cmd = [sys.executable, "-m", "demucs", "--two-stems", "vocals",
            "-n", model, "-o", outdir, wav_path]
-    run(cmd, log=log)
+    run(cmd, log=log, progress=progress)
     stem = os.path.splitext(os.path.basename(wav_path))[0]
     for root, _dirs, files in os.walk(outdir):
         if "vocals.wav" in files and os.path.basename(root) == stem:
@@ -678,13 +911,15 @@ def export_backing_track(no_vocals_wav, out_path, log=None):
     return out_path
 
 
-def convert_video(video, out_path, max_height=720, quality=20, log=None):
+def convert_video(video, out_path, max_height=720, quality=20, log=None,
+                  progress=None):
     """
     Schreibt das Video fuer den Pack. MP4/H.264 ist Standard: schnell,
     klein und scharf. Endet der Pfad auf .ogv, wird Theora+Vorbis
     geschrieben - fuer Packs, die das brauchen.
     """
-    scale = "scale=-2:'min(%d,ih)'" % int(max_height)
+    # gerade Hoehe erzwingen - libx264/yuv420p verlangt das / even height
+    scale = "scale=-2:'trunc(min(%d,ih)/2)*2'" % int(max_height)
     if out_path.lower().endswith(".ogv"):
         has_theora, has_vorbis = check_encoders()
         if not has_theora or not has_vorbis:
@@ -695,8 +930,10 @@ def convert_video(video, out_path, max_height=720, quality=20, log=None):
         args = ["-c:v", "libx264", "-crf", str(int(quality)),
                 "-preset", "veryfast", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"]
+    total = probe_duration(video) if progress else None
     run([ffmpeg(), "-y", "-hide_banner", "-i", video, "-vf", scale]
-        + args + ["-map", "0:v:0", "-map", "0:a:0?", out_path], log=log)
+        + args + ["-map", "0:v:0", "-map", "0:a:0?", out_path], log=log,
+        progress=progress, total=total)
     return out_path
 
 
@@ -1147,6 +1384,121 @@ def zip_pack(pack_folder, out_zip=None):
     if os.path.abspath(made) != os.path.abspath(out_zip):
         os.replace(made, out_zip)
     return out_zip
+
+
+# --------------------------------------------------------------------------
+# Aufraeumen / housekeeping
+# --------------------------------------------------------------------------
+
+def sweep_temp(prefix="dubforge_", max_age_h=24):
+    """
+    Entfernt liegengebliebene Arbeitsordner aus %TEMP% (z.B. nach Absturz),
+    die aelter als max_age_h Stunden sind. Der eigene, frische Ordner bleibt.
+    Removes stale work dirs left in %TEMP% after a crash.
+    """
+    import time
+    root = tempfile.gettempdir()
+    now = time.time()
+    n = 0
+    try:
+        for name in os.listdir(root):
+            if not name.startswith(prefix):
+                continue
+            path = os.path.join(root, name)
+            try:
+                if os.path.isdir(path) and \
+                        now - os.path.getmtime(path) > max_age_h * 3600:
+                    shutil.rmtree(path, ignore_errors=True)
+                    n += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return n
+
+
+# --------------------------------------------------------------------------
+# DisDubs-Vorabpruefung / DisDubs pre-flight check
+# --------------------------------------------------------------------------
+
+DISDUBS_MAX_NAME = 40          # speakersFrom: laengere Labels -> keine Namen
+DISDUBS_MAX_SPEAKERS = 10
+DISDUBS_FREE_SECONDS = 180
+DISDUBS_TRAILING_S = 1.0       # so kurze Ueberschneidungen kuerzt DisDubs
+
+
+def _has_alnum(text):
+    import unicodedata
+    norm = unicodedata.normalize("NFKD", text or "")
+    return bool(re.search(r"[A-Za-z0-9]", norm))
+
+
+def disdubs_check(tracks, clips, duration=0.0, dub=True, has_backing=True,
+                  has_video=True, default_names=()):
+    """
+    Prueft, wie DisDubs (und DubStage) den Pack lesen wuerden, und gibt eine
+    Liste von Warnungen zurueck - leer, wenn alles gut aussieht.
+    Returns a list of warnings; empty when nothing is flagged.
+    """
+    warns = []
+    if not clips:
+        return warns
+    used = {}
+    for i, tr in enumerate(tracks):
+        name = str(tr.get("name") or "").strip()
+        label = safe_name(name, "clip")
+        if label == "clip" or not name:
+            warns.append(M("dd_bad_name", name or "?"))
+        elif not _has_alnum(name):
+            warns.append(M("dd_bad_name", name))
+        if len(name) > DISDUBS_MAX_NAME:
+            warns.append(M("dd_long_name", name[:30] + "…"))
+        if name in default_names:
+            warns.append(M("dd_default_name", name))
+        used.setdefault(label.lower(), []).append(name)
+    for label, names in used.items():
+        if len(names) > 1:
+            warns.append(M("dd_collide", " / ".join(names)))
+
+    used_tracks = sorted({int(c.get("track", 0)) for c in clips})
+    n_speakers = len(used_tracks)
+    if n_speakers > 1 and (n_speakers * 2 > len(clips)
+                           or n_speakers > DISDUBS_MAX_SPEAKERS):
+        warns.append(M("dd_one_part", n_speakers, len(clips)))
+
+    if dub:
+        if not has_video:
+            warns.append(M("dd_no_video"))
+        if not has_backing:
+            warns.append(M("dd_no_backing"))
+        if duration and duration > DISDUBS_FREE_SECONDS:
+            warns.append(M("dd_too_long", fmt_time(duration)[:-4]))
+    ordered = sorted(clips, key=lambda c: c["start"])
+    ov = 0
+    for a, b in zip(ordered, ordered[1:]):
+        over = a["end"] - b["start"]
+        if 0 < over <= DISDUBS_TRAILING_S:
+            ov += 1
+    if ov:
+        warns.append(M("dd_overlap", ov))
+    short = sum(1 for c in clips if c["end"] - c["start"] < 0.3)
+    if short:
+        warns.append(M("dd_short_clip", short))
+    nocap = sum(1 for c in clips if not (c.get("caption") or "").strip())
+    if nocap and nocap == len(clips):
+        warns.append(M("dd_no_caption", nocap, len(clips)))
+    return warns
+
+
+def disdubs_parts(tracks, clips):
+    """Wie viele Rollen DisDubs daraus machen wuerde / how many parts."""
+    if not clips:
+        return 0
+    used = sorted({int(c.get("track", 0)) for c in clips})
+    n = len(used)
+    if n * 2 > len(clips) or n > DISDUBS_MAX_SPEAKERS:
+        return 1
+    return n
 
 
 # --------------------------------------------------------------------------

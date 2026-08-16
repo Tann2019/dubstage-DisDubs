@@ -9,6 +9,88 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 Nothing yet.
 
+## [1.2.0] - 2026-08-16
+
+The fixes from a five-lens product review (UX, correctness, DisDubs
+compatibility, robustness, onboarding) - 48 verified findings, worked
+through top to bottom before the first external test. Pack format
+unchanged.
+
+### Added
+
+- **Cancel.** Every background job (download, Demucs, build, zip) can be
+  aborted from a Cancel button next to the progress bar; the child processes
+  are killed including their children (`taskkill /T`), and closing the window
+  during a job asks first instead of orphaning ffmpeg. The bar shows real
+  percentages from yt-dlp, ffmpeg (`time=` against the known duration) and
+  Demucs' tqdm output, and turns indeterminate while nothing is known.
+- **DisDubs pre-flight check** before building: the half rule
+  (`speakers × 2 > clips` -> DisDubs casts a single part), names over 40
+  characters, symbol-only names, two tracks that collide after
+  file-name cleaning, tracks still carrying a default name, no
+  `_backing_track`, no picture, scenes over 3:00 (free-server limit), clips
+  ending less than 1 s into the next (DisDubs trims those), sub-0.3 s clips,
+  no subtitles at all. One dialog, only when something is flagged. The stats
+  line shows live how many parts DisDubs would cast.
+- **Startup tool probe** off the main thread: a warning row names missing
+  ffmpeg/yt-dlp and points at Setup.bat, Analyse/Build are disabled without
+  ffmpeg, the Demucs checkbox is off and disabled with "(not installed)" when
+  Demucs is not importable, and a failed separation is said in the status
+  line, not just the log. The ffmpeg line now reports H.264/AAC (what the
+  pack actually uses) instead of Theora/Vorbis.
+- **Post-build dialog** with three ways on: Zip for DisDubs, open the folder,
+  copy to the target folder. Zip/Copy with unbuilt changes offer to rebuild
+  first; a "built 12:03 · 8 clips" label sits by the progress bar. Voice
+  packs (no video) are refused by "Zip for DisDubs" with an explanation.
+- **Friendly yt-dlp errors**: "Sign in to confirm", unavailable/private,
+  HTTP 403, extractor failures and network errors get a plain-language
+  message; where an update usually helps, the dialog offers "Update yt-dlp
+  now?".
+- **Crash safety**: the message pump survives a failing callback (and logs
+  it), unexpected Tk exceptions show a dialog instead of vanishing under
+  pythonw, a start-up failure is shown too, and every session is teed to
+  `dubforge.log` next to the program. The window title carries the version,
+  `_dubforge.json` records `dubforge_version`.
+- Keyboard: Esc and Ctrl+Space hints in the subtitle field, a one-line
+  shortcut cheat sheet under it, Ctrl+Space plays while typing. A **Help**
+  button opens the README. Preview shows "no video frame" / "select a clip"
+  instead of black.
+- Detection presets re-run detection immediately as long as nothing was
+  edited by hand; "Detect again" now **keeps track and subtitle** of the
+  clip that overlaps most, instead of dropping everything to track 1.
+- From/To are cleared when a different link is pasted; a span over four
+  minutes with Demucs on asks first (CPU Demucs takes 10-20 minutes for that).
+- Setup.bat and the Start scripts weed out the Microsoft Store `python`
+  stub, the Demucs prompt accepts Y as well as J, and error lines are echoed
+  in English too.
+- Tests: pre-flight rules, progress parsing, error classification, i18n
+  placeholder parity across both string tables, missing-tools UI state,
+  pump survival, redetect carry-over, URL span guard, cancel of a running
+  job, failed analyse leaving the session intact (36 tests).
+
+### Fixed
+
+- **Building never destroys a pack it did not mean to.** A pack of the same
+  name asks overwrite / save as `Name_2`; the build goes into `Name.building`
+  and is swapped in only on success, so a failed or cancelled build leaves
+  the previous pack untouched and never leaves `built_path` pointing at a
+  half-written folder.
+- **A failed analyse or reopen no longer leaves a half-alive session**: the
+  new session is staged in its own work dir and committed on the main thread
+  only on success; on failure the old clips, waveform and audio stay usable.
+- Worker threads no longer mutate the clip list, tracks or duration
+  directly; Tk variables are read on the main thread before a job starts.
+- `trim_local` failed on audio-only sources with a time span (`-map 0:v:0`
+  is now optional); `convert_video` produced an odd height that libx264
+  refuses (`scale` now rounds to even).
+- Right-click on the timeline saves a pending subtitle first; nudging a clip
+  updates its list row in place instead of rebuilding the list; the previous
+  playback frame folder is removed on the next Play; whole-track playback is
+  capped at 90 s; stale `%TEMP%\dubforge_*` folders older than a day are
+  swept at start and the own one on exit.
+- yt-dlp lookup and version are cached, so the app starts faster and
+  "Update yt-dlp" invalidates the cache.
+
 ## [1.1.0] - 2026-08-15
 
 DubForge overhaul. The pack format is unchanged: everything DubStage and
@@ -244,7 +326,8 @@ switchable at runtime.
   clip lengths it lands one sample short, which previously raised mid-playback
   and froze the interface.
 
-[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/xmrius/dubstage/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/xmrius/dubstage/releases/tag/v1.0.0
