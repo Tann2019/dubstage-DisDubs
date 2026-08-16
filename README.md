@@ -38,8 +38,12 @@
 ## Install
 
 1. Download the files into one folder
-2. Run `Setup.bat` — installs the Python packages and fetches ffmpeg into `tools/`
-3. `Start DubForge.bat` to build a pack, `Start DubStage.bat` to record
+2. Double-click `Start DubForge.bat` (or `Start DubStage.bat`)
+
+That is all. The first start runs the setup by itself — Python packages, ffmpeg
+into `tools/`, and desktop shortcuts if you want them — then opens the tool.
+Every start after that goes straight to the tool. You can also run `Setup.bat`
+on its own if you would rather set up first.
 
 Requires Windows and Python 3.9+. The setup offers [Demucs](https://github.com/adefossez/demucs) for vocal separation; it pulls in PyTorch (several hundred MB up to ~2 GB) and is optional — without it you simply get no backing track.
 

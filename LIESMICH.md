@@ -9,11 +9,11 @@ Szenen aus Videos selbst nachsprechen. **DubForge** zerlegt ein Video in einspre
 ## Einmalig einrichten
 
 1. Alle Dateien in einen Ordner legen, z. B. `F:\DubForge`
-2. **`Setup.bat`** doppelklicken
+2. **`Start DubForge.bat`** zum Bauen bzw. **`Start DubStage.bat`** zum Einsprechen doppelklicken
 
-Das Setup holt Python-Pakete, lädt ffmpeg in einen `tools`-Unterordner und fragt, ob Demucs für die Stimmen-Trennung installiert werden soll. Demucs zieht PyTorch nach — mehrere hundert MB bis ~2 GB. Wenn du Nein sagst, läuft alles weiter, nur ohne Backing-Track.
+Ein eigener Installationsschritt ist nicht nötig: Der erste Start merkt, dass noch nichts eingerichtet ist, holt das nach und öffnet danach das Werkzeug. Jeder weitere Start geht direkt hinein. Wer lieber vorher einrichtet, nimmt weiterhin **`Setup.bat`**.
 
-Danach: **`Start DubForge.bat`** zum Bauen, **`Start DubStage.bat`** zum Einsprechen.
+Das Setup holt Python-Pakete, lädt ffmpeg in einen `tools`-Unterordner, bietet Verknüpfungen auf dem Desktop an und fragt, ob Demucs für die Stimmen-Trennung installiert werden soll. Demucs zieht PyTorch nach — mehrere hundert MB bis ~2 GB. Wenn du Nein sagst, läuft alles weiter, nur ohne Backing-Track.
 
 ---
 

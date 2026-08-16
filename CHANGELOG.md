@@ -7,6 +7,22 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Setting up is no longer a separate step.** `Start DubForge.bat` and
+  `Start DubStage.bat` check before they launch: no Python, missing packages
+  or no ffmpeg and they run `Setup.bat` themselves, then start the tool. A
+  marker in `tools\.setup-done` means an installed copy still starts
+  instantly - the check only runs while that marker is missing, and `tools`
+  survives an update. Running out of ideas is now said in one line ("run
+  Setup.bat, then start again") instead of a dead end, and the setup is never
+  run twice in a row.
+
+### Added
+
+- **Desktop shortcuts.** At the end of `Setup.bat`, one question puts
+  DubForge and DubStage on the desktop.
+
 ## [1.2.1] - 2026-08-16
 
 ### Fixed

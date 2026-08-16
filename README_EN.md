@@ -9,11 +9,11 @@ Dub scenes from video yourself. **DubForge** cuts a video into speakable clips, 
 ## One-time setup
 
 1. Put all files into one folder, e.g. `F:\DubForge`
-2. Double-click **`Setup.bat`**
+2. Double-click **`Start DubForge.bat`** to build, **`Start DubStage.bat`** to record
 
-The setup installs the Python packages, downloads ffmpeg into a `tools` subfolder, and asks whether to install Demucs for vocal separation. Demucs pulls in PyTorch, several hundred MB up to ~2 GB. If you say no, everything still works, just without a backing track.
+There is no separate install step: the first start notices that nothing is set up yet and runs the setup for you, then opens the tool. Every start after that goes straight in. If you prefer to set up first, **`Setup.bat`** still does exactly that on its own.
 
-Then: **`Start DubForge.bat`** to build, **`Start DubStage.bat`** to record.
+The setup installs the Python packages, downloads ffmpeg into a `tools` subfolder, offers shortcuts on the desktop, and asks whether to install Demucs for vocal separation. Demucs pulls in PyTorch, several hundred MB up to ~2 GB. If you say no, everything still works, just without a backing track.
 
 ---
 

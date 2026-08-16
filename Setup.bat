@@ -105,6 +105,31 @@ if not defined FFOK (
 )
 
 echo.
+if defined FFOK (
+  rem Merker, damit die Starter nicht jedes Mal neu einrichten wollen.
+  rem Marker so the launchers do not set up again on every start.
+  if not exist tools mkdir tools
+  >"tools\.setup-done" echo ok
+
+  echo [+] Verknuepfungen auf dem Desktop?  /  Shortcuts on the desktop?
+  choice /c JYN /n /m "       Anlegen? / Create them? [J/Y/N] "
+  if errorlevel 3 (
+    echo       uebersprungen / skipped
+  ) else (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+      "try{ $d=[Environment]::GetFolderPath('Desktop');" ^
+      "$w=New-Object -ComObject WScript.Shell;" ^
+      "foreach($n in 'DubForge','DubStage'){" ^
+      "  $s=$w.CreateShortcut((Join-Path $d ($n+'.lnk')));" ^
+      "  $s.TargetPath=(Join-Path '%~dp0' ('Start '+$n+'.bat'));" ^
+      "  $s.WorkingDirectory=('%~dp0'.TrimEnd(''));" ^
+      "  $s.Description=$n; $s.Save() };" ^
+      "Write-Host '       DubForge und DubStage liegen auf dem Desktop.'" ^
+      "} catch { Write-Host ('       Ging nicht: '+$_.Exception.Message) }"
+  )
+  echo.
+)
+
 if not defined FFOK (
   echo [!] Es konnte kein ffmpeg eingerichtet werden. Ohne ffmpeg
   echo     laeuft weder DubForge noch DubStage.
