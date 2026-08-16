@@ -277,7 +277,7 @@ class Game(tk.Tk):
     def __init__(self):
         super().__init__()
         self.cfg = load_cfg()
-        set_lang(self.cfg.get("lang", "de"))
+        set_lang(self.cfg.get("lang") or pc.system_lang())
         self.title(t("title"))
         # Nicht groesser oeffnen als der Bildschirm hergibt - sonst liegt
         # die untere Knopfleiste hinter der Taskleiste.

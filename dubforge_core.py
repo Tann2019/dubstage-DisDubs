@@ -35,6 +35,25 @@ def set_lang(code):
     LANG = "en" if str(code).lower().startswith("en") else "de"
 
 
+def system_lang():
+    """Sprache, die Windows eingestellt hat: "de" bei einem deutschen
+    System, sonst "en". Nur der Ausgangswert beim allerersten Start -
+    danach gilt, was im Fenster gewaehlt wurde.
+
+    The language Windows is set to. Only the starting point on the very
+    first run; after that the choice in the window wins.
+    """
+    name = ""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Control Panel\International") as key:
+            name = winreg.QueryValueEx(key, "LocaleName")[0] or ""
+    except Exception:
+        name = (os.environ.get("LANG") or os.environ.get("LANGUAGE") or "")
+    return "de" if str(name).lower().startswith("de") else "en"
+
+
 _MSG = {
     "no_ffmpeg": (
         "ffmpeg wurde nicht gefunden.\n\n"

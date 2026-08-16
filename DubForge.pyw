@@ -528,7 +528,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.cfg = load_cfg()
-        set_lang(self.cfg.get("lang", "de"))
+        set_lang(self.cfg.get("lang") or pc.system_lang())
 
         # Fensterhoehe an den Bildschirm anpassen; darunter scrollt die Seite.
         # Fit the window to the screen; below that the page scrolls.

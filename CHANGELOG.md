@@ -7,6 +7,18 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The setup and the starters speak one language, not both.** They ask
+  Windows which language it is set to (`Control Panel\International`), and a
+  language already chosen in DubForge or DubStage beats that - so the window
+  you watch during the install is either German or English, never every line
+  twice. The starter hands its answer over to `Setup.bat`, so the two agree.
+  Anything other than a German system reads as English.
+- **DubForge and DubStage open in the system language** on the very first
+  start instead of always in German. As soon as a language is picked in the
+  window, that choice is remembered and wins from then on.
+
 ## [1.2.2] - 2026-08-16
 
 ### Changed
