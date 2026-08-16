@@ -16,6 +16,10 @@ versioning follows [Semantic Versioning](https://semver.org/).
   counted as video. Instead, an audio-only source now gets a **still-image
   video** built for it - the cover art if there is one, otherwise a dark card
   - so the pack still plays in DubStage and DisDubs.
+- **"Separate vocals now"** (Detect menu) runs Demucs on the current session
+  - clips stay, the waveform switches to the vocals, and the pack gets its
+  `_backing_track`. Offered automatically after reopening a pack that has no
+  backing track.
 - **"Reopen a pack" accepts packs without a video** (clip packs built with
   "With video" unticked): it asks for the original source file and rebuilds
   the session from it, so a project saved that way is not lost.

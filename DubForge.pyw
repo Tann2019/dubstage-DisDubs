@@ -260,6 +260,23 @@ T = {
     "btn_undo":     ("Rueckgaengig", "Undo"),
     "btn_redo":     ("Wiederholen", "Redo"),
     "detect_menu":  ("Erkennung ▾", "Detect ▾"),
+    "sep_now":      ("Stimmen jetzt von Musik trennen (Demucs)",
+                     "Separate vocals from music now (Demucs)"),
+    "dlg_sep_t":    ("Kein Backing-Track", "No backing track"),
+    "dlg_sep_ask":  ("Dieser Pack hat keinen _backing_track (Musik ohne Stimmen). "
+                     "Ohne ihn laeuft in DubStage und DisDubs kein Ton unter der "
+                     "Aufnahme.\n\nJetzt die Stimmen mit Demucs trennen? "
+                     "(dauert je nach Laenge einige Minuten)",
+                     "This pack has no _backing_track (music without vocals). "
+                     "Without it DubStage and DisDubs play no sound under the "
+                     "recording.\n\nSeparate the vocals with Demucs now? "
+                     "(takes a few minutes depending on length)"),
+    "dlg_sep_missing": ("Demucs ist nicht installiert - Setup.bat ausfuehren und "
+                        "die Stimmen-Trennung mit installieren.",
+                        "Demucs is not installed - run Setup.bat and install "
+                        "vocal separation."),
+    "st_sep_done":  ("Stimmen getrennt - Backing-Track vorhanden.",
+                     "Vocals separated - backing track ready."),
     "sensitivity":  ("Empfindlichkeit", "Sensitivity"),
     "sens_low":     ("niedrig (weniger Clips)", "low (fewer clips)"),
     "sens_norm":    ("normal", "normal"),
@@ -855,6 +872,7 @@ class App(tk.Tk):
         self.det_mb = ttk.Menubutton(bar, text=t("detect_menu"))
         dm = self._menu(self.det_mb)
         dm.add_command(label=t("redetect"), command=self.redetect)
+        dm.add_command(label=t("sep_now"), command=self.separate_now)
         dm.add_separator()
         sub1 = self._menu(dm)
         for key, val in (("sens_low", 0.6), ("sens_norm", 1.0),
@@ -1980,6 +1998,46 @@ class App(tk.Tk):
             self.vheight.set(m["vheight"])
         self._after_analyze()
         self._auto_detect_ok = False      # geladene Clips nicht ueberschreiben
+        if not self.backing_path and self.audio_path:
+            if self.have_demucs:
+                if messagebox.askyesno(t("dlg_sep_t"), t("dlg_sep_ask")):
+                    self.separate_now()
+            else:
+                self._log(t("dlg_sep_missing"))
+
+    # ------------------------------------------ Stimmen nachtraeglich trennen
+    def separate_now(self):
+        """Demucs auf die laufende Sitzung anwenden - z.B. nach 'Pack
+        weiterbearbeiten'. Clips bleiben, die Wellenform zeigt danach die
+        Stimmen. / run Demucs on the current session, keep the clips."""
+        if not self.audio_path:
+            messagebox.showinfo(t("dlg_first_t"), t("dlg_first"))
+            return
+        if not self.have_demucs:
+            messagebox.showinfo(t("dlg_sep_t"), t("dlg_sep_missing"))
+            return
+        self._stop_play()
+        audio, work = self.audio_path, self.work
+
+        def job():
+            self._phase(t("st_demucs"), 2, 90)
+            self._set_status(t("st_demucs"), None)
+            voc, nov = pc.separate_vocals(audio, work, log=self._log,
+                                          progress=self._set_progress)
+            self._phase(t("st_wave"), 90, 100)
+            data, sr = pc.load_mono(voc)
+            self._sep_result = (voc, nov, data, sr)
+
+        def done():
+            voc, nov, data, sr = self._sep_result
+            self._sep_result = None
+            self.vocals_path, self.backing_path = voc, nov
+            self.wave_data, self.wave_sr = data, sr
+            self._peak_cache = (None, None)
+            self._log(t("log_voc_ok"))
+            self.status.configure(text=t("st_sep_done"))
+            self.draw_wave()
+        self._bg(job, on_done=done, what=t("sep_now"))
 
     # ---------------------------------------------------------- Erkennung
     def redetect(self, quiet=False):
