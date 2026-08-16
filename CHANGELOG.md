@@ -7,6 +7,8 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-08-16
+
 ### Fixed
 
 - **Building from an MP3 (or any audio-only source) failed** with
@@ -341,7 +343,8 @@ switchable at runtime.
   clip lengths it lands one sample short, which previously raised mid-playback
   and froze the interface.
 
-[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/xmrius/dubstage/compare/v1.0.0...v1.0.1
