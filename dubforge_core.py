@@ -1220,9 +1220,67 @@ def assign_captions(clips, cues, offset=0.0, overwrite=False):
 # --------------------------------------------------------------------------
 
 def has_video_stream(path):
-    out = capture([ffprobe(), "-v", "error", "-select_streams", "v:0",
-                   "-show_entries", "stream=codec_type", "-of", "csv=p=0", path])
-    return "video" in out
+    """
+    Echtes Video? Eingebettete Cover-Bilder (MP3-Albumcover, 'attached_pic')
+    zaehlen nicht - die haben ffmpeg beim Bauen zum Absturz gebracht.
+    Real moving picture? Embedded cover art does not count.
+    """
+    out = capture([ffprobe(), "-v", "error", "-select_streams", "v",
+                   "-show_entries",
+                   "stream=codec_type,codec_name,disposition:stream_disposition=attached_pic",
+                   "-of", "json", path])
+    try:
+        info = json.loads(out)
+    except Exception:
+        return "video" in out
+    for st in info.get("streams", []):
+        if st.get("codec_type") != "video":
+            continue
+        disp = st.get("disposition") or {}
+        if int(disp.get("attached_pic", 0) or 0):
+            continue
+        if (st.get("codec_name") or "").lower() in ("mjpeg", "png", "bmp", "gif",
+                                                    "tiff", "webp"):
+            continue
+        return True
+    return False
+
+
+def extract_cover(path, out_png):
+    """Eingebettetes Cover-Bild holen, wenn eins da ist / embedded cover art."""
+    try:
+        run([ffmpeg(), "-y", "-hide_banner", "-loglevel", "error", "-i", path,
+             "-map", "0:v:0", "-frames:v", "1", "-f", "image2", out_png],
+            check=True)
+        return out_png if os.path.isfile(out_png) and os.path.getsize(out_png) > 0 \
+            else None
+    except Exception:
+        return None
+
+
+def make_still_video(audio, out_path, image=None, max_height=720, log=None,
+                     progress=None, color="#1e1f26"):
+    """
+    Video aus Standbild (Cover oder dunkle Karte) und Ton - fuer Quellen ohne
+    Bild, damit DubStage und DisDubs den Pack trotzdem abspielen koennen.
+    Still-image video for audio-only sources.
+    """
+    total = probe_duration(audio) if progress else None
+    h = int(max_height)
+    if image:
+        vin = ["-loop", "1", "-framerate", "10", "-i", image]
+        vf = ("scale=-2:%d:force_original_aspect_ratio=decrease,"
+              "pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p" % h)
+    else:
+        w = int(h * 16 / 9) // 2 * 2
+        vin = ["-f", "lavfi", "-i", "color=c=%s:s=%dx%d:r=10" % (color, w, h)]
+        vf = "format=yuv420p"
+    run([ffmpeg(), "-y", "-hide_banner"] + vin + ["-i", audio,
+         "-vf", vf, "-c:v", "libx264", "-tune", "stillimage", "-crf", "24",
+         "-preset", "veryfast", "-c:a", "aac", "-b:a", "192k",
+         "-movflags", "+faststart", "-shortest", "-map", "0:v:0", "-map", "1:a:0",
+         out_path], log=log, progress=progress, total=total)
+    return out_path
 
 
 def extract_frame(video, seconds, out_png, width=320):

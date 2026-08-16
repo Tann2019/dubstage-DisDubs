@@ -7,7 +7,18 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Building from an MP3 (or any audio-only source) failed** with
+  "Could not find tag for codec h264": ffprobe reported the file's embedded
+  cover art as a video stream, and ffmpeg then tried to encode that one JPEG
+  as the scene. Cover art and other still-image "streams" are no longer
+  counted as video. Instead, an audio-only source now gets a **still-image
+  video** built for it - the cover art if there is one, otherwise a dark card
+  - so the pack still plays in DubStage and DisDubs.
+- **"Reopen a pack" accepts packs without a video** (clip packs built with
+  "With video" unticked): it asks for the original source file and rebuilds
+  the session from it, so a project saved that way is not lost.
 
 ## [1.2.0] - 2026-08-16
 

@@ -238,8 +238,15 @@ T = {
     "preview_pick": ("Clip waehlen", "select a clip"),
     "st_voc_fail":  ("Stimmen-Trennung fehlgeschlagen - Originalton wird benutzt.",
                      "Vocal separation failed - using the original audio."),
-    "st_novideo":   ("Quelle ohne Bild - Video wird uebersprungen.",
-                     "Source has no picture - video skipped."),
+    "st_novideo":   ("Quelle ohne Bild - es wird ein Standbild-Video gebaut.",
+                     "Source has no picture - building a still-image video."),
+    "st_still":     ("Baue Standbild-Video (Cover oder Karte) ...",
+                     "Building still-image video (cover art or card) ..."),
+    "dlg_src_t":    ("Quelle waehlen", "Choose the source"),
+    "dlg_src_for":  ("Dieser Pack hat kein Video. Bitte die urspruengliche "
+                     "Quelle (Video oder Audio) waehlen, aus der er gebaut wurde.",
+                     "This pack has no video. Please choose the original source "
+                     "(video or audio) it was built from."),
     "st_check":     ("Pruefe Werkzeuge ...", "Checking tools ..."),
     "crash_t":      ("DubForge ist auf einen Fehler gestossen",
                      "DubForge ran into an error"),
@@ -1868,13 +1875,30 @@ class App(tk.Tk):
         if self.clips and self.dirty:
             if not messagebox.askyesno(t("dlg_replace_t"), t("dlg_replace")):
                 return
+        try:
+            info = pc.read_pack_for_edit(folder)
+        except Exception as ex:
+            messagebox.showerror(t("dlg_err"), str(ex))
+            return
+        source = None
+        if not info["video"]:
+            messagebox.showinfo(t("dlg_src_t"), t("dlg_src_for"))
+            source = filedialog.askopenfilename(
+                title=t("dlg_src_t"),
+                filetypes=[(t("dlg_filter"), "*.mp4 *.mkv *.mov *.avi *.webm *.m4v "
+                                             "*.wav *.mp3 *.ogg *.m4a *.flac"),
+                           (t("dlg_allfiles"), "*.*")])
+            if not source:
+                return
         self._stop_play()
-        self._bg(lambda: self._do_open_pack(folder), on_done=self._after_open,
-                 what=t("open_pack"))
+        self._bg(lambda: self._do_open_pack(folder, source),
+                 on_done=self._after_open, what=t("open_pack"))
 
-    def _do_open_pack(self, folder):
+    def _do_open_pack(self, folder, source=None):
         self._phase(t("st_open"), 2, 10)
         info = pc.read_pack_for_edit(folder)      # prueft, bevor etwas passiert
+        if not info["video"] and source:
+            info["video"] = source
         if not info["video"]:
             raise RuntimeError(pc.M("no_pack", folder))
         sess = self._new_session()
@@ -1885,7 +1909,7 @@ class App(tk.Tk):
             ext = os.path.splitext(info["video"])[1]
             sess["video_path"] = os.path.join(work, "source" + ext)
             shutil.copy2(info["video"], sess["video_path"])
-            sess["video_from_pack"] = ext.lower() == ".mp4"
+            sess["video_from_pack"] = (ext.lower() == ".mp4" and not source)
             if info["backing"]:
                 sess["backing_path"] = os.path.join(work, "backing.wav")
                 shutil.copy2(info["backing"], sess["backing_path"])
@@ -3163,7 +3187,17 @@ class App(tk.Tk):
                                      progress=self._set_progress)
                 self._log("  dub_video.mp4")
             elif dub:
+                # Quelle ohne Bild: Standbild-Video aus Cover oder dunkler
+                # Karte, damit der Pack abspielbar bleibt. / still video
+                self._phase(t("st_still"), 55, 95)
                 self._log(t("st_novideo"))
+                cover = pc.extract_cover(self.video_path,
+                                         os.path.join(self.work, "cover.png"))
+                pc.make_still_video(self.audio_path,
+                                    os.path.join(dest, "dub_video.mp4"),
+                                    image=cover, max_height=opts["vheight"],
+                                    log=self._log, progress=self._set_progress)
+                self._log("  dub_video.mp4 (%s)" % ("cover" if cover else "card"))
             if dub:
                 with open(os.path.join(dest, "_TIMESTAMPS.txt"), "w",
                           encoding="utf-8") as f:
