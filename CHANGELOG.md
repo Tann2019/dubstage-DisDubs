@@ -83,6 +83,67 @@ DisDubs read is written exactly as before, and the two new files start with
 - The list selection is a neutral slate instead of the accent colour, so the
   per-speaker text colours stay legible on the selected row.
 
+### Added (merged from upstream xmrius/dubstage 1.1.0)
+
+- **Update notice inside both tools.** (In this fork the updater checks
+  `Tann2019/dubstage-DisDubs` releases, never upstream, so an update can
+  never replace the fork's DubForge with the original.) On start they ask GitHub once whether a
+  newer release exists — at most every six hours, and the answer is remembered
+  so the banner also appears when no request is made. The banner names the new
+  version, expands to show that release's changelog, and updates the tools on
+  one click: the archive is downloaded, checked, the app closes, the files are
+  replaced and the app starts again.
+- `packs/`, `dubs/`, `tools/` and the settings files are never touched by an
+  update. Only known project files are replaced, everything else in the archive
+  is discarded before the swap, and the previous `.pyw`, `.py`, `.bat` and `.md`
+  files are copied to a backup folder in `%TEMP%` first. A log of every step
+  lands next to it.
+- Guard rails on the way in: HTTPS only, GitHub hosts only, this repository
+  only, a size limit on the download, no archive paths pointing outside the
+  target folder, and every `.py`/`.pyw` from the archive is compiled before
+  anything is replaced — a truncated download cannot leave a broken install.
+- The check can be switched off by setting `"check_updates": false` in
+  `dubforge_settings.json` or `dubstage_settings.json`. Nothing but the release
+  information is ever requested, and nothing is sent.
+
+### Fixed (merged from upstream xmrius/dubstage 1.1.0)
+
+- **YouTube downloads failed with HTTP 403 on newer ffmpeg builds.** With
+  `--download-sections`, yt-dlp hands the video URL to ffmpeg and lets it fetch
+  the data; that request does not carry what the URL was signed for, and Google
+  refuses it. DubForge now falls back to downloading the whole video with
+  yt-dlp's own downloader and cutting it locally with the existing trim path —
+  slower, but it works regardless of the ffmpeg build. The fast section
+  download is still tried first.
+
+- **"Update yt-dlp" updated a different yt-dlp than the one that runs.** The
+  button always went through `pip` for the interpreter running DubForge, while
+  the version shown — and the binary actually used for downloads — comes from
+  `shutil.which`, which finds any `yt-dlp.exe` in `PATH` first. With both
+  present, pip reported success and nothing changed. The button now updates
+  whatever `ytdlp()` resolves to: a standalone build updates itself with `-U`,
+  a pip launcher falls back to pip from *its own* installation. The startup log
+  and the yt-dlp line now name the file in use, and if the version is unchanged
+  after an update the dialog says so and explains why instead of claiming
+  success.
+
+- **DubForge was unusable in a non-maximised window.** The three steps were
+  packed straight into the window, so anything past the bottom edge — step 3,
+  "Build pack", the progress bar and the log — was simply gone, with no way to
+  reach it. The content now sits in a scrollable canvas. It is stretched to the
+  window as long as there is room, so a maximised window looks exactly as
+  before; below that it scrolls.
+- The mouse wheel scrolls the page, except over widgets that scroll or count on
+  their own: the waveform still zooms, the clip list and the log scroll
+  themselves and hand the wheel back to the page once they hit their end, and
+  the spinbox keeps counting.
+- Minimum window size lowered from 980×740 to 900×480, and both tools now open
+  no taller than the screen allows. At 1180×880 DubForge did not fit on a 1080p
+  display once the taskbar and title bar were subtracted — which is how the
+  problem arose in the first place.
+- Scrollbars were unstyled and showed up pale grey against the dark interface.
+
+
 ## [1.0.1] - 2026-08-11
 
 ### Added
@@ -183,6 +244,7 @@ switchable at runtime.
   clip lengths it lands one sample short, which previously raised mid-playback
   and froze the interface.
 
-[Unreleased]: https://github.com/xmrius/dubstage/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/xmrius/dubstage/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/xmrius/dubstage/releases/tag/v1.0.0

@@ -132,6 +132,24 @@ For a folder to count as a pack it needs a **`dub_video`** (mp4, ogv, mkv, webm,
 
 ---
 
+## Updates
+
+Both tools ask GitHub on start whether a newer release exists — at most once
+every six hours. If there is, a banner appears at the top: it names the version,
+**What's new** expands it to show that release's changelog, and **Update now**
+installs it. The archive is downloaded and checked, the app closes, the files
+are replaced and it starts again — takes a few seconds.
+
+Your `packs/`, `dubs/`, `tools/` and settings are never touched. Only the
+program files are replaced, and the previous ones are copied to a backup folder
+in `%TEMP%` beforehand, with a log of every step beside it.
+
+Apart from downloading a video you asked for, this is the only time either tool
+touches the network, and nothing is sent. To switch it off, set
+`"check_updates": false` in `dubforge_settings.json` or `dubstage_settings.json`.
+
+---
+
 ## When something goes wrong
 
 **Windows blocks the BAT files** — Right-click → Properties → tick **Unblock** at the bottom. Or in PowerShell inside the folder: `Get-ChildItem -Recurse | Unblock-File`. Important: move the files out of the downloads folder into a normal folder first.

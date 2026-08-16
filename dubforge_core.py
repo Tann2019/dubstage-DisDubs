@@ -85,6 +85,37 @@ _MSG = {
     "no_pack": (
         "Kein Dub-Pack: %s\n(dub_video.* fehlt oder keine Clips mit Zeitstempel)",
         "Not a dub pack: %s\n(no dub_video.* or no clips carrying a timestamp)"),
+    "dl_section_fail": (
+        "Der Ausschnitt-Download ging nicht. Das passiert, wenn ffmpeg die\n"
+        "Videodaten selbst holen soll und dabei abgewiesen wird. Ich lade\n"
+        "jetzt das ganze Video und schneide es hier - das dauert laenger.",
+        "Downloading just the section failed. That happens when ffmpeg has to\n"
+        "fetch the video data itself and gets refused. Downloading the whole\n"
+        "video now and cutting it here - this takes longer."),
+    "dl_trim_local": (
+        "Download fertig, schneide auf die gewaehlte Zeitspanne ...",
+        "Download finished, cutting to the chosen time span ..."),
+    "ytdlp_at": (
+        "Benutztes yt-dlp: %s",
+        "yt-dlp in use: %s"),
+    "ytdlp_mod": (
+        "Benutztes yt-dlp: Modul in %s",
+        "yt-dlp in use: module in %s"),
+    "ytdlp_self": (
+        "Eigenstaendige Datei - erneuert sich selbst.",
+        "Standalone file - updating itself."),
+    "ytdlp_wrap": (
+        "Das ist ein pip-Starter, kein eigenstaendiges Programm. "
+        "Ich nehme pip aus derselben Installation: %s",
+        "This is a pip launcher, not a standalone build. "
+        "Using pip from the same installation: %s"),
+    "ytdlp_shadow": (
+        "Achtung: pip hat %s aktualisiert, benutzt wird aber %s.\n"
+        "Die aeltere Datei liegt im PATH und hat Vorrang - entfernen oder "
+        "erneuern, sonst bleibt der alte Stand aktiv.",
+        "Note: pip updated %s, but %s is what actually runs.\n"
+        "The older file sits in PATH and wins - remove or update it, "
+        "otherwise the old version stays in charge."),
 }
 
 
@@ -174,17 +205,57 @@ def ytdlp_version():
         return ver, None
 
 
+def _python_beside(exe):
+    """Zu einem Scripts\\yt-dlp.exe den zugehoerigen Interpreter finden."""
+    d = os.path.dirname(exe)
+    for cand in (os.path.join(d, _exe("python")),
+                 os.path.join(os.path.dirname(d), _exe("python")),
+                 os.path.join(d, _exe("pythonw")),
+                 os.path.join(os.path.dirname(d), _exe("pythonw"))):
+        if os.path.isfile(cand):
+            return cand
+    return None
+
+
 def update_ytdlp(log=None):
     """
-    Aktualisiert yt-dlp. Als eigenstaendige Datei in tools/ kann es sich
-    selbst erneuern, ueber pip installiert muss pip ran.
+    Aktualisiert genau das yt-dlp, das beim Download auch wirklich laeuft.
+
+    Wichtig: pip erneuert nur die Installation des aufrufenden Interpreters.
+    Liegt eine eigenstaendige yt-dlp.exe im PATH, hat die Vorrang - dann
+    laeuft pip ins Leere und die Version aendert sich scheinbar nicht.
     """
-    local = os.path.join(TOOLS_DIR, _exe("yt-dlp"))
-    if os.path.isfile(local):
-        run([local, "-U"], log=log, check=False)
-    else:
+    yt = ytdlp()
+    if not yt:
         run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
             log=log, check=False)
+        return ytdlp_version()
+
+    if len(yt) == 1:                      # eigenstaendige Datei im PATH
+        exe = yt[0]
+        if log:
+            log(M("ytdlp_at", exe))
+            log(M("ytdlp_self"))
+        out = capture([exe, "-U"])
+        if log:
+            for line in out.splitlines():
+                if line.strip():
+                    log(line.rstrip())
+        # Ein von pip erzeugter Starter kann sich nicht selbst erneuern.
+        if re.search(r"package manager|not.*(standalone|binar)|"
+                     r"use that to update|pip.*install", out, re.I) \
+                or not out.strip():
+            py = _python_beside(exe) or sys.executable
+            if log:
+                log(M("ytdlp_wrap", py))
+            run([py, "-m", "pip", "install", "--upgrade", "yt-dlp"],
+                log=log, check=False)
+    else:                                 # als Modul der laufenden Python
+        if log:
+            log(M("ytdlp_mod", os.path.dirname(sys.executable)))
+        run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
+            log=log, check=False)
+
     return ytdlp_version()
 
 
@@ -270,30 +341,78 @@ def fmt_time(sec):
     return "%d:%06.3f" % (m, s)
 
 
+def _source_file(workdir, stem="source."):
+    # Nach dem Zusammenfuehren liegt eine .mkv da. Sollten Reste der
+    # Einzelspuren uebrig sein, haette sortiert() sonst die erwischt.
+    merged = os.path.join(workdir, stem + "mkv")
+    if os.path.isfile(merged):
+        return merged
+    for f in sorted(os.listdir(workdir)):
+        if f.startswith(stem) and not f.endswith(".part"):
+            return os.path.join(workdir, f)
+    return None
+
+
+def _clear_source(workdir, stem="source."):
+    """Reste eines abgebrochenen Downloads wegraeumen."""
+    for f in os.listdir(workdir):
+        if f.startswith(stem):
+            try:
+                os.remove(os.path.join(workdir, f))
+            except OSError:
+                pass
+
+
 def download_youtube(url, start, end, workdir, log=None):
-    """Laedt den gewaehlten Ausschnitt als Videodatei herunter."""
+    """
+    Laedt den gewaehlten Ausschnitt.
+
+    Zuerst der schnelle Weg ueber --download-sections, der nur den Ausschnitt
+    holt. Dabei laedt aber ffmpeg die Daten selbst, und seine Anfrage passt
+    nicht immer zu der URL, die yt-dlp ausgehandelt hat - dann kommt ein 403
+    zurueck. Klappt das nicht, wird das ganze Video geladen und lokal
+    geschnitten: langsamer, aber verlaesslich.
+    """
     yt = ytdlp()
     if not yt:
         raise RuntimeError(M("no_ytdlp"))
-    out_tmpl = os.path.join(workdir, "source.%(ext)s")
-    cmd = list(yt) + [
+
+    base = list(yt) + [
         "--no-playlist",
         "--ffmpeg-location", os.path.dirname(ffmpeg()),
         "-f", "bv*[height<=1080]+ba/b[height<=1080]/b",
         "--merge-output-format", "mkv",
-        "-o", out_tmpl,
     ]
-    if start is not None or end is not None:
+    out_tmpl = os.path.join(workdir, "source.%(ext)s")
+    want_cut = start is not None or end is not None
+
+    if want_cut:
         s = 0.0 if start is None else float(start)
         e = "inf" if end is None else "%.3f" % float(end)
-        cmd += ["--download-sections", "*%.3f-%s" % (s, e),
-                "--force-keyframes-at-cuts"]
-    cmd.append(url)
-    run(cmd, log=log)
-    for f in sorted(os.listdir(workdir)):
-        if f.startswith("source."):
-            return os.path.join(workdir, f)
-    raise RuntimeError(M("dl_empty"))
+        try:
+            run(base + ["-o", out_tmpl,
+                        "--download-sections", "*%.3f-%s" % (s, e),
+                        "--force-keyframes-at-cuts", url], log=log)
+            f = _source_file(workdir)
+            if f:
+                return f
+        except Exception:
+            pass
+        if log:
+            log(M("dl_section_fail"))
+        _clear_source(workdir)
+
+    # Ganzes Video laden - hier holt yt-dlp die Daten selbst.
+    full_tmpl = os.path.join(workdir, "full.%(ext)s")
+    run(base + ["-o", full_tmpl, url], log=log)
+    full = _source_file(workdir, "full.")
+    if not full:
+        raise RuntimeError(M("dl_empty"))
+    if not want_cut:
+        return full
+    if log:
+        log(M("dl_trim_local"))
+    return trim_local(full, start, end, workdir, log=log)
 
 
 def trim_local(path, start, end, workdir, log=None):

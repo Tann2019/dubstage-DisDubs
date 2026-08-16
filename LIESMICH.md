@@ -132,6 +132,26 @@ Damit ein Ordner als Pack zählt, braucht er ein **`dub_video`** (mp4, ogv, mkv,
 
 ---
 
+## Updates
+
+Beide Werkzeuge fragen beim Start bei GitHub nach, ob es eine neuere Fassung
+gibt — höchstens alle sechs Stunden. Wenn ja, erscheint oben ein Banner: es
+nennt die Version, **Was ist neu** klappt den Changelog dieser Version auf, und
+**Jetzt aktualisieren** spielt sie ein. Das Archiv wird geladen und geprüft, die
+App schließt sich, die Dateien werden getauscht und die App startet neu — dauert
+ein paar Sekunden.
+
+`packs/`, `dubs/`, `tools/` und die Einstellungen werden dabei nie angefasst. Es
+werden nur die Programmdateien ersetzt, und die alten landen vorher in einem
+Sicherungsordner unter `%TEMP%`, mit einem Protokoll daneben.
+
+Außer beim Herunterladen eines Videos, das du selbst angibst, ist das der
+einzige Moment, in dem eines der Werkzeuge ins Netz geht — gesendet wird nichts.
+Abschalten lässt es sich mit `"check_updates": false` in
+`dubforge_settings.json` oder `dubstage_settings.json`.
+
+---
+
 ## Wenn etwas klemmt
 
 **Windows blockiert die BAT-Dateien** — Rechtsklick → Eigenschaften → unten **Zulassen**. Oder in PowerShell im Ordner: `Get-ChildItem -Recurse | Unblock-File`. Wichtig: die Dateien vorher aus dem Download-Ordner in einen normalen Ordner verschieben.

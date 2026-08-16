@@ -27,11 +27,13 @@ import traceback
 import tempfile
 import subprocess
 
+import webbrowser
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dubforge_core as pc
+import updater as upd
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(APP_DIR, "packs")
@@ -49,6 +51,8 @@ ACC2 = "#43d69a"      # "los" / go
 WARN = "#ffb454"
 WAVE = "#6f7ba8"
 SEL_ROW = "#363a55"   # Zeilenauswahl in der Liste / list selection
+BAN = "#332e5e"       # Update-Banner / update banner
+BAN_TXT = "#241f47"
 
 # Spurfarben - jede Spur ist ein Sprecher / track colours - one per speaker
 TRACK_COLORS = ["#7c5cff", "#43d69a", "#ff8a5c", "#5cc8ff",
@@ -115,10 +119,22 @@ T = {
                      "py -m pip install --upgrade yt-dlp",
                      "The update changed nothing. In a terminal:\n"
                      "py -m pip install --upgrade yt-dlp"),
+    "upd_same":     ("Die Version ist unveraendert: %s\n\n"
+                     "Meist liegt eine aeltere yt-dlp.exe im PATH und hat "
+                     "Vorrang vor der Installation, die pip erneuert hat. "
+                     "Welche Datei benutzt wird, steht im Protokoll - diese "
+                     "Datei entfernen oder direkt erneuern.",
+                     "The version has not changed: %s\n\n"
+                     "Usually an older yt-dlp.exe sits in PATH and takes "
+                     "precedence over the installation pip just updated. "
+                     "The log shows which file is in use - remove or update "
+                     "that file."),
     "dl_hint":      ("Der Download ist fehlgeschlagen. yt-dlp ist %d Tage alt - "
-                     "sehr wahrscheinlich liegt es daran.",
-                     "The download failed. yt-dlp is %d days old - that is "
-                     "very likely the cause."),
+                     "das koennte die Ursache sein, wenn oben ein Fehler beim "
+                     "Auslesen der Seite steht.",
+                     "The download failed. yt-dlp is %d days old - that may be "
+                     "the cause if the log shows an error while reading the "
+                     "page."),
     "demucs_hint":  ("Erster Lauf mit Demucs dauert laenger (Modell wird geladen).",
                      "The first Demucs run takes longer (the model is downloaded)."),
 
@@ -350,6 +366,39 @@ T = {
                      "DubForge to keep editing it.\n"),
     "type_dub":     ("Dub-Pack", "Dub pack"),
     "type_voice":   ("Clip-Pack", "Clip pack"),
+
+    # --- Update
+    "upd_head":     ("Version %s ist da", "Version %s is out"),
+    "upd_sub":      ("Du hast %s", "You have %s"),
+    "upd_more":     ("Was ist neu", "What's new"),
+    "upd_less":     ("Zuklappen", "Collapse"),
+    "upd_now":      ("Jetzt aktualisieren", "Update now"),
+    "upd_later":    ("Spaeter", "Later"),
+    "upd_page":     ("Auf GitHub", "On GitHub"),
+    "upd_nonotes":  ("Zu dieser Version wurde kein Text hinterlegt.",
+                     "No description was published for this version."),
+    "upd_ask_t":    ("Update einspielen?", "Install update?"),
+    "upd_ask":      ("DubForge und DubStage werden auf %s aktualisiert.\n\n"
+                     "Die App schliesst sich, die Dateien werden getauscht "
+                     "und die App startet neu.\n"
+                     "Packs, Aufnahmen und Einstellungen bleiben unberuehrt.\n\n"
+                     "Fortfahren?",
+                     "DubForge and DubStage will be updated to %s.\n\n"
+                     "The app closes, the files are replaced and the app "
+                     "starts again.\n"
+                     "Packs, recordings and settings are left untouched.\n\n"
+                     "Continue?"),
+    "upd_dl":       ("Lade %s ... %d%%", "Downloading %s ... %d%%"),
+    "upd_check":    ("Pruefe das Archiv ...", "Checking the archive ..."),
+    "upd_swap":     ("Tausche Dateien - die App startet gleich neu ...",
+                     "Replacing files - the app will restart shortly ..."),
+    "upd_fail_t":   ("Update fehlgeschlagen", "Update failed"),
+    "upd_fail":     ("Es hat nicht geklappt:\n\n%s\n\n"
+                     "Du kannst die Version auch von Hand von der "
+                     "Release-Seite laden.",
+                     "It did not work:\n\n%s\n\n"
+                     "You can also download the version by hand from the "
+                     "release page."),
 }
 
 
@@ -391,8 +440,12 @@ class App(tk.Tk):
         self.cfg = load_cfg()
         set_lang(self.cfg.get("lang", "de"))
 
-        self.geometry(self.cfg.get("geometry", "1260x920"))
-        self.minsize(1040, 760)
+        # Fensterhoehe an den Bildschirm anpassen; darunter scrollt die Seite.
+        # Fit the window to the screen; below that the page scrolls.
+        sh = self.winfo_screenheight()
+        self.geometry(self.cfg.get("geometry",
+                                   "1260x%d" % min(920, max(560, sh - 130))))
+        self.minsize(1040, 520)
         self.configure(bg=BG)
 
         self.msgq = queue.Queue()
@@ -426,6 +479,11 @@ class App(tk.Tk):
         self._undo = []
         self._redo = []
 
+        self.upd_info = None        # gefundenes Release / found release
+        self.upd_open = False       # Changelog aufgeklappt?
+        self.upd_busy = False
+        self.upd_dismissed = False
+
         self.view_a = 0.0
         self.view_b = 1.0
         self._drag = None
@@ -445,10 +503,16 @@ class App(tk.Tk):
         self._build_style()
         self._init_vars()
         self._build_ui()
+        # Mausrad global: die Seite scrollt, ausser ueber Widgets, die
+        # selbst scrollen (siehe _wheel). / page scroll, see _wheel
+        self.bind("<MouseWheel>", self._wheel)
+        self.bind("<Button-4>", self._wheel)
+        self.bind("<Button-5>", self._wheel)
         self._pump_id = self.after(80, self._pump)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.bind("<Key>", self._on_key)
         self._check_tools()
+        self.after(1200, self._check_update)
 
     # -------------------------------------------------- Variablen (einmalig)
     def _init_vars(self):
@@ -546,6 +610,22 @@ class App(tk.Tk):
               foreground=[("selected", FG)])
         s.configure("TProgressbar", background=ACC2, troughcolor=BG2,
                     borderwidth=0)
+        s.configure("Ban.TFrame", background=BAN)
+        s.configure("Ban.TLabel", background=BAN, foreground=FG)
+        s.configure("BanHead.TLabel", background=BAN, foreground="#ffffff",
+                    font=(FONT + " Semibold", 11))
+        s.configure("BanDim.TLabel", background=BAN, foreground="#b6b1dc")
+        s.configure("Ban.TButton", background="#4b4590", foreground=FG,
+                    padding=6, borderwidth=0)
+        s.map("Ban.TButton", background=[("active", "#5d56ad")])
+        s.configure("Vertical.TScrollbar", background="#3a3d4d",
+                    troughcolor=BG2, bordercolor=BG2, arrowcolor=FG,
+                    darkcolor=BG2, lightcolor=BG2, borderwidth=0)
+        s.map("Vertical.TScrollbar", background=[("active", "#4a4e63")])
+        s.configure("Horizontal.TScrollbar", background="#3a3d4d",
+                    troughcolor=BG2, bordercolor=BG2, arrowcolor=FG,
+                    darkcolor=BG2, lightcolor=BG2, borderwidth=0)
+        s.map("Horizontal.TScrollbar", background=[("active", "#4a4e63")])
         s.configure("TLabelframe", background=BG, foreground=ACC2)
         s.configure("TLabelframe.Label", background=BG, foreground=ACC2,
                     font=(FONT + " Semibold", 10))
@@ -559,9 +639,36 @@ class App(tk.Tk):
 
     def _build_ui(self):
         self.title(t("title"))
-        root = ttk.Frame(self, padding=(10, 8, 10, 8))
-        root.pack(fill="both", expand=True)
+
+        # Der Inhalt liegt in einem Canvas mit Scrollbalken: passt er nicht
+        # ins Fenster, scrollt die Seite statt unten abgeschnitten zu werden.
+        # The content sits in a scrolling canvas: too small a window scrolls
+        # instead of cutting off the bottom.
+        outer = ttk.Frame(self)
+        outer.pack(fill="both", expand=True)
+        self.ui_root = outer
+
+        # Update-Banner ausserhalb des Scrollbereichs / banner outside scroll
+        self.banner = ttk.Frame(outer, style="Ban.TFrame")
+        self.upd_text = None
+        self.upd_status = None
+
+        host = ttk.Frame(outer)
+        host.pack(fill="both", expand=True)
+        self.scroll_host = host
+        self.vcanvas = tk.Canvas(host, bg=BG, highlightthickness=0, takefocus=0,
+                                 yscrollincrement=20)
+        self.vcanvas.pack(side="left", fill="both", expand=True)
+        vbar = ttk.Scrollbar(host, orient="vertical", command=self.vcanvas.yview)
+        vbar.pack(side="right", fill="y")
+        self.vcanvas.configure(yscrollcommand=vbar.set)
+
+        root = ttk.Frame(self.vcanvas, padding=(10, 8, 10, 8))
+        self._root_win = self.vcanvas.create_window((0, 0), window=root,
+                                                    anchor="nw")
         self.root_frame = root
+        root.bind("<Configure>", self._scroll_geom)
+        self.vcanvas.bind("<Configure>", self._scroll_geom)
 
         # ---------------- Kopfzeile / header
         top = ttk.Frame(root)
@@ -820,6 +927,182 @@ class App(tk.Tk):
         self._sync_src()
         self._refresh_track_box()
         self._update_undo_buttons()
+        self.after_idle(self._scroll_geom)
+        if self.upd_info:
+            self._show_banner()
+
+    # ------------------------------------------------------------- Scrollen
+    def _scroll_geom(self, _e=None):
+        """Inhaltsbreite ans Fenster koppeln, Hoehe mitwachsen lassen."""
+        try:
+            c, f = self.vcanvas, self.root_frame
+            w = max(1, c.winfo_width())
+            h = max(c.winfo_height(), f.winfo_reqheight())
+            c.itemconfigure(self._root_win, width=w, height=h)
+            c.configure(scrollregion=(0, 0, w, h))
+        except Exception:
+            pass
+
+    def _wheel(self, event):
+        """Mausrad scrollt die Seite - ausser das Widget scrollt selbst."""
+        num = getattr(event, "num", 0)
+        if num == 4:
+            step = -1
+        elif num == 5:
+            step = 1
+        else:
+            step = -1 if getattr(event, "delta", 0) > 0 else 1
+
+        w = event.widget
+        for _ in range(30):
+            if w is None or w is self:
+                break
+            if w is getattr(self, "canvas", None):
+                return                           # Zeitleiste scrollt/zoomt selbst
+            try:
+                if w.winfo_class() in ("TSpinbox", "Spinbox", "TCombobox",
+                                       "TScale"):
+                    return
+            except Exception:
+                pass
+            if w in (getattr(self, "tree", None), getattr(self, "log", None),
+                     getattr(self, "upd_text", None)) and w is not None:
+                first, last = w.yview()
+                if (step < 0 and first > 0.0) or (step > 0 and last < 1.0):
+                    return                       # hat noch Weg / still room
+                break
+            try:
+                parent = w.winfo_parent()
+                w = self.nametowidget(parent) if parent else None
+            except Exception:
+                break
+        try:
+            self.vcanvas.yview_scroll(step * 3, "units")
+        except Exception:
+            pass
+
+    # ---------------------------------------------------------- Update
+    def _check_update(self):
+        """Beim Start nachsehen, ob es etwas Neues gibt / check on start."""
+        cache = self.cfg.get("upd_cache") or {}
+        if cache.get("tag") and upd.is_newer(cache["tag"]):
+            self.upd_info = cache
+            self._show_banner()
+        if not upd.due(self.cfg):
+            return
+
+        def work():
+            try:
+                info = upd.check_latest()
+            except Exception:
+                return                      # kein Netz, kein Drama
+            self.msgq.put(("update", info))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _show_banner(self):
+        info = self.upd_info
+        b = getattr(self, "banner", None)
+        if b is None:
+            return
+        for c in b.winfo_children():
+            c.destroy()
+        self.upd_text = None
+        self.upd_status = None
+        if not info or self.upd_dismissed:
+            b.pack_forget()
+            return
+
+        head = ttk.Frame(b, style="Ban.TFrame", padding=(12, 8))
+        head.pack(fill="x")
+        ttk.Label(head, text=t("upd_head", info.get("version", "?")),
+                  style="BanHead.TLabel").pack(side="left")
+        ttk.Label(head, text="    " + t("upd_sub", upd.VERSION),
+                  style="BanDim.TLabel").pack(side="left")
+        ttk.Button(head, text=t("upd_later"), style="Ban.TButton",
+                   command=self._hide_banner).pack(side="right", padx=(6, 0))
+        ttk.Button(head, text=t("upd_page"), style="Ban.TButton",
+                   command=lambda: webbrowser.open(
+                       info.get("page") or upd.RELEASES_PAGE)
+                   ).pack(side="right", padx=6)
+        self.upd_go = ttk.Button(head, text=t("upd_now"), style="Go.TButton",
+                                 command=self._do_update)
+        self.upd_go.pack(side="right", padx=6)
+        ttk.Button(head, text=t("upd_less") if self.upd_open else t("upd_more"),
+                   style="Ban.TButton",
+                   command=self._toggle_notes).pack(side="right")
+
+        if self.upd_open:
+            body = ttk.Frame(b, style="Ban.TFrame", padding=(12, 0, 12, 10))
+            body.pack(fill="x")
+            txt = tk.Text(body, height=12, wrap="word", bg=BAN_TXT,
+                          fg="#ded9ff", relief="flat", padx=10, pady=8,
+                          highlightthickness=0, font=(FONT, 9))
+            txt.insert("1.0", upd.plain_notes(info.get("notes"))
+                       or t("upd_nonotes"))
+            txt.configure(state="disabled")
+            txt.pack(side="left", fill="both", expand=True)
+            sb = ttk.Scrollbar(body, orient="vertical", command=txt.yview)
+            sb.pack(side="left", fill="y")
+            txt.configure(yscrollcommand=sb.set)
+            self.upd_text = txt
+
+        self.upd_status = ttk.Label(b, text="", style="BanDim.TLabel",
+                                    padding=(12, 0, 12, 8))
+        if self.upd_busy:
+            self.upd_status.pack(fill="x")
+        b.pack(side="top", fill="x", before=self.scroll_host)
+
+    def _toggle_notes(self):
+        self.upd_open = not self.upd_open
+        self._show_banner()
+
+    def _hide_banner(self):
+        self.upd_dismissed = True
+        self._show_banner()
+
+    def _upd_say(self, text):
+        if self.upd_status is None:
+            return
+        self.upd_status.configure(text=text)
+        if not self.upd_status.winfo_ismapped():
+            self.upd_status.pack(fill="x")
+
+    def _do_update(self):
+        info = self.upd_info
+        if not info or self.upd_busy:
+            return
+        if not info.get("zip"):
+            webbrowser.open(info.get("page") or upd.RELEASES_PAGE)
+            return
+        if not messagebox.askyesno(t("upd_ask_t"),
+                                   t("upd_ask", info.get("tag", "?"))):
+            return
+        self.upd_busy = True
+        try:
+            self.upd_go.configure(state="disabled")
+        except Exception:
+            pass
+        self._upd_say(t("upd_dl", info.get("tag", "?"), 0))
+
+        def work():
+            wd = tempfile.mkdtemp(prefix="dubstage_upd_")
+            try:
+                zp = os.path.join(wd, "release.zip")
+
+                def prog(done, total):
+                    pct = int(done * 100 / total) if total else 0
+                    self.msgq.put(("upd_say",
+                                   t("upd_dl", info.get("tag", "?"), pct)))
+                upd.download_zip(info["zip"], zp, progress=prog)
+                self.msgq.put(("upd_say", t("upd_check")))
+                root = upd.stage(zp, os.path.join(wd, "neu"))
+                self.msgq.put(("upd_say", t("upd_swap")))
+                upd.apply(root, APP_DIR, which="DubForge",
+                          tag=info.get("tag", ""))
+                self.msgq.put(("upd_quit", None))
+            except Exception as e:
+                self.msgq.put(("upd_error", "%s" % e))
+        threading.Thread(target=work, daemon=True).start()
 
     # -------------------------------------------------------- Sprachwechsel
     def _change_lang(self, _e=None):
@@ -830,7 +1113,7 @@ class App(tk.Tk):
         set_lang(code)
         self.cfg["lang"] = code
         save_cfg(self.cfg)
-        self.root_frame.destroy()
+        self.ui_root.destroy()
         self._build_ui()
         if keep.strip():
             self.log.insert("end", keep + "\n")
@@ -912,11 +1195,15 @@ class App(tk.Tk):
         ver, age = pc.ytdlp_version()
         self._ytdlp_age = age
         if ver and age is not None:
-            self._log(t("ytdlp_ver", ver, age))
+            yt = pc.ytdlp() or []
+            where = yt[0] if len(yt) == 1 else os.path.dirname(sys.executable)
+            self._log(t("ytdlp_ver", ver, age) + "   -   " + str(where))
             if age > 60:
                 self._log(t("ytdlp_old", age))
 
     def update_ytdlp(self):
+        before = pc.ytdlp_version()[0]
+
         def work():
             self._set_status(t("st_upd"), 30)
             ver, age = pc.update_ytdlp(log=self._log)
@@ -926,9 +1213,13 @@ class App(tk.Tk):
 
         def done():
             ver = getattr(self, "_new_ytdlp", None)
-            if ver:
+            if ver and ver != before:
                 self._log(t("upd_done", ver))
                 messagebox.showinfo(t("title"), t("upd_done", ver))
+            elif ver:
+                # Gleiche Version - fast immer eine aeltere Datei im PATH.
+                self._log(t("upd_same", ver))
+                messagebox.showwarning(t("title"), t("upd_same", ver))
             else:
                 messagebox.showwarning(t("title"), t("upd_fail"))
         self._bg(work, on_done=done)
@@ -964,6 +1255,27 @@ class App(tk.Tk):
                     self._show_preview(*payload)
                 elif kind == "play_start":
                     self._on_play_start(*payload)
+                elif kind == "update":
+                    upd.note_checked(self.cfg)
+                    self.cfg["upd_cache"] = payload
+                    save_cfg(self.cfg)
+                    if payload.get("newer") and not self.upd_dismissed:
+                        self.upd_info = payload
+                        self._show_banner()
+                elif kind == "upd_say":
+                    self._upd_say(payload)
+                elif kind == "upd_quit":
+                    self._upd_say(t("upd_swap"))
+                    self.dirty = False
+                    self.after(700, self._on_close)
+                elif kind == "upd_error":
+                    self.upd_busy = False
+                    try:
+                        self.upd_go.configure(state="normal")
+                    except Exception:
+                        pass
+                    self._upd_say("")
+                    messagebox.showerror(t("upd_fail_t"), t("upd_fail", payload))
         except queue.Empty:
             pass
         self._pump_id = self.after(80, self._pump)
