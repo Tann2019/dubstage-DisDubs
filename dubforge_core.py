@@ -746,6 +746,72 @@ def cut_media(path, start, end, out, video=True, log=None, progress=None):
     return out
 
 
+def cut_gap(path, a, b, out, video=True, log=None, progress=None):
+    """Schneidet [a, b] mittendrin heraus und setzt die beiden Reste
+    zusammen - in einem Durchgang, damit Bild und Ton an der Naht
+    zusammenbleiben. Neu kodiert, weil ein Schnitt mitten im Material
+    anders nicht sauber wird.
+
+    Cuts [a, b] out of the middle and joins the two remaining parts in a
+    single pass, so picture and sound stay together at the seam. Encoded
+    afresh - a cut in the middle cannot be done cleanly by copying.
+    """
+    a, b = max(0.0, float(a)), float(b)
+    dur = probe_duration(path)
+    if video:
+        fc = ("[0:v]trim=start=0:end=%.3f,setpts=PTS-STARTPTS[v0];"
+              "[0:a]atrim=start=0:end=%.3f,asetpts=PTS-STARTPTS[a0];"
+              "[0:v]trim=start=%.3f,setpts=PTS-STARTPTS[v1];"
+              "[0:a]atrim=start=%.3f,asetpts=PTS-STARTPTS[a1];"
+              "[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]" % (a, a, b, b))
+        cmd = [ffmpeg(), "-y", "-hide_banner", "-i", path,
+               "-filter_complex", fc, "-map", "[v]", "-map", "[a]",
+               "-c:v", "libx264", "-crf", "18", "-preset", "veryfast",
+               "-pix_fmt", "yuv420p", "-c:a", "pcm_s16le", out]
+    else:
+        fc = ("[0:a]atrim=start=0:end=%.3f,asetpts=PTS-STARTPTS[a0];"
+              "[0:a]atrim=start=%.3f,asetpts=PTS-STARTPTS[a1];"
+              "[a0][a1]concat=n=2:v=0:a=1[a]" % (a, b))
+        cmd = [ffmpeg(), "-y", "-hide_banner", "-i", path,
+               "-filter_complex", fc, "-map", "[a]", "-c:a", "pcm_s16le", out]
+    left = (dur - (b - a)) if dur > 0 else 0
+    run(cmd, log=log, progress=progress, total=(left if left > 0.05 else None))
+    return out
+
+
+def remove_span(clips, a, b, min_len=0.05):
+    """Blendet [a, b] aus der Zeitrechnung aus: was dahinter liegt rueckt
+    heran, was mittendrin lag verschwindet, was hineinragt wird gekappt.
+    Ein Clip ueber die ganze Luecke hinweg bleibt einer - er ist danach um
+    die Luecke kuerzer.
+
+    Takes [a, b] out of the time base: what came after moves up, what sat
+    inside is gone, what reaches in is clamped. A clip spanning the whole
+    gap stays one clip, shorter by the gap. Returns (clips, dropped).
+    """
+    a, b = float(a), float(b)
+    gap = max(0.0, b - a)
+
+    def shift(t):
+        t = float(t)
+        if t <= a:
+            return t
+        if t >= b:
+            return t - gap
+        return a
+
+    kept, dropped = [], 0
+    for c in clips:
+        s, e = shift(c["start"]), shift(c["end"])
+        if e - s < min_len:
+            dropped += 1
+            continue
+        c = dict(c)
+        c["start"], c["end"] = s, e
+        kept.append(c)
+    return kept, dropped
+
+
 def cut_clips(clips, start, end, min_len=0.05):
     """Schiebt Clips in die neue Zeitrechnung und wirft weg, was ausserhalb
     liegt. Clips, die ueber die Kante ragen, werden dort gekappt.

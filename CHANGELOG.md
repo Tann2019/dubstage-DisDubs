@@ -7,6 +7,21 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-16
+
+### Added
+
+- **Mark a stretch and cut it out.** Drag across the waveform to mark a
+  section - it is highlighted, and a click without dragging clears it
+  again. Right-click it and either **cut it out**, which joins what was
+  before and after it, or **keep only that**, which throws the rest away.
+  Cutting out the middle is one ffmpeg pass (trim and concat) so picture
+  and sound stay together at the seam; when the marked stretch touches
+  either end it is just an ordinary trim. Clips move with the material:
+  what sat inside the removed stretch is dropped, what came after moves
+  up, what reached into it is clamped, and a clip spanning the whole gap
+  survives as one clip that is shorter by the gap.
+
 ## [1.3.1] - 2026-08-16
 
 ### Fixed
@@ -443,7 +458,8 @@ switchable at runtime.
   clip lengths it lands one sample short, which previously raised mid-playback
   and froze the interface.
 
-[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.2.3...v1.3.0
 [1.2.3]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.2.2...v1.2.3

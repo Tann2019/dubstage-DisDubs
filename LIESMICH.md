@@ -52,6 +52,8 @@ Die Zeitleiste zeigt oben die Wellenform und darunter **eine Spur je Sprecher**.
 | Teilen | **S** oder der Knopf — am Playhead, wenn er im Clip steht, sonst in der Mitte |
 | Duplizieren / löschen | Strg+D / Entf |
 | Rückgängig / wiederholen | Strg+Z / Strg+Y (auch die Knöpfe ↶ ↷) |
+| Abschnitt markieren | über die Wellenform ziehen — der markierte Bereich wird hervorgehoben; ein Klick ohne Ziehen löscht ihn |
+| Abschnitt herausschneiden | Rechtsklick auf eine Markierung: **herausschneiden** (davor und danach wird zusammengesetzt, dahinter rückt heran) oder **nur das behalten** |
 | Szene kürzen | Rechtsklick auf die Wellenform: **alles davor / danach abschneiden**. Bild und Ton der Sitzung werden dort geschnitten, die Clips wandern mit, was draußen liegt fällt weg — dein eigenes Ende, ohne neu zu laden |
 | Zoomen | Strg + Mausrad an der Mausposition, Mausrad allein scrollt; Pos1 / Ende springen |
 | Spur hinzufügen | **+ Spur**, oder Klick auf die Zeile unter der letzten Spur |

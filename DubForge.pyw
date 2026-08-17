@@ -263,6 +263,22 @@ T = {
     "cut_after":    ("Alles danach abschneiden (bis %s)",
                      "Cut off everything after here (up to %s)"),
     "dlg_cut_t":    ("Szene kuerzen", "Trim the scene"),
+    "sel_cut_out":  ("Markierten Abschnitt herausschneiden (%s - %s)",
+                     "Cut out the marked section (%s - %s)"),
+    "sel_keep":     ("Nur den markierten Abschnitt behalten (%s - %s)",
+                     "Keep only the marked section (%s - %s)"),
+    "sel_hint":     ("Markiert: %s - %s (%s). Rechtsklick zum Schneiden.",
+                     "Marked: %s - %s (%s). Right-click to cut."),
+    "dlg_out_ask":  ("%s werden mittendrin herausgeschnitten, der Rest "
+                     "davor und danach wird zusammengesetzt%s.\n\nDas gilt "
+                     "fuer Bild und Ton dieser Sitzung. Rueckgaengig holt "
+                     "das nicht zurueck, die Quelldatei bleibt aber "
+                     "unberuehrt.\n\nJetzt schneiden?",
+                     "%s is cut out of the middle and what is left before "
+                     "and after is joined%s.\n\nThis applies to the picture "
+                     "and the sound of this session. Undo does not bring it "
+                     "back, though the source file itself stays "
+                     "untouched.\n\nCut now?"),
     "dlg_cut_ask":  ("Aus %s wird ein Ausschnitt von %s - %s werden "
                      "abgeschnitten%s.\n\nDas gilt fuer Bild und Ton dieser "
                      "Sitzung. Rueckgaengig holt das nicht zurueck, die "
@@ -629,6 +645,7 @@ class App(tk.Tk):
         self._play_frames = None
         self._play_frame_idx = -1
         self.playhead = None
+        self.sel_span = None         # markierter Abschnitt / marked span
         self._preview_job = None
         self._preview_img = None
         self._preview_key = None
@@ -2074,6 +2091,16 @@ class App(tk.Tk):
         self._bg(job, on_done=done, what=t("sep_now"))
 
     # ------------------------------------------------- Szene selbst kuerzen
+    def cut_out_selection(self):
+        """Den markierten Abschnitt herausschneiden, Rest zusammensetzen."""
+        if self.sel_span:
+            self._cut_scene(self.sel_span[0], self.sel_span[1], keep=False)
+
+    def keep_selection(self):
+        """Nur den markierten Abschnitt behalten."""
+        if self.sel_span:
+            self._cut_scene(self.sel_span[0], self.sel_span[1], keep=True)
+
     def cut_scene(self, at, keep_left):
         """Schneidet Bild und Ton der Sitzung auf einen Teil zusammen: alles
         vor bzw. nach `at` faellt weg. Die Clips wandern in die neue
@@ -2085,21 +2112,37 @@ class App(tk.Tk):
         whatever lies outside is dropped - a way to set your own end after
         the fact, without downloading the video again.
         """
+        a = 0.0 if keep_left else float(at)
+        b = float(at) if keep_left else float(self.duration)
+        self._cut_scene(a, b, keep=True)
+
+    def _cut_scene(self, a, b, keep=True):
+        """Schneidet die Sitzung: entweder bleibt nur [a, b] stehen, oder
+        genau [a, b] faellt heraus und die Reste werden zusammengesetzt.
+        Either only [a, b] is kept, or exactly [a, b] falls out and the
+        remaining parts are joined.
+        """
         if not self.audio_path or self.duration <= 0:
             messagebox.showinfo(t("dlg_first_t"), t("dlg_first"))
             return
-        a = 0.0 if keep_left else float(at)
-        b = float(at) if keep_left else float(self.duration)
-        span, gone = b - a, self.duration - (b - a)
-        if span < MIN_SCENE or gone < 0.05:
+        a, b = max(0.0, float(a)), min(float(self.duration), float(b))
+        span = b - a
+        left = span if keep else (self.duration - span)
+        gone = self.duration - left
+        if left < MIN_SCENE or gone < 0.05:
             messagebox.showinfo(t("dlg_cut_t"), t("dlg_cut_short", MIN_SCENE))
             return
-        _kept, drop = pc.cut_clips(self.clips, a, b)
+        if keep:
+            _kept, drop = pc.cut_clips(self.clips, a, b)
+        else:
+            _kept, drop = pc.remove_span(self.clips, a, b)
         extra = t("dlg_cut_clips", drop) if drop else ""
-        if not messagebox.askyesno(
-                t("dlg_cut_t"),
-                t("dlg_cut_ask", pc.fmt_time(self.duration), pc.fmt_time(span),
-                  pc.fmt_time(gone), extra)):
+        if keep:
+            ask = t("dlg_cut_ask", pc.fmt_time(self.duration),
+                    pc.fmt_time(left), pc.fmt_time(gone), extra)
+        else:
+            ask = t("dlg_out_ask", pc.fmt_time(gone), extra)
+        if not messagebox.askyesno(t("dlg_cut_t"), ask):
             return
         self._stop_play()
 
@@ -2108,22 +2151,38 @@ class App(tk.Tk):
         src, audio = self.video_path, self.audio_path
         voc, nov, has_v = self.vocals_path, self.backing_path, self.video_has_stream
 
+        def cut(path, out, video):
+            """Behalten oder herausschneiden - und wenn die Luecke am Rand
+            liegt, ist beides dasselbe."""
+            if keep:
+                return pc.cut_media(path, a, b, out, video=video,
+                                    log=self._log, progress=self._set_progress)
+            if a <= 0.02:
+                return pc.cut_media(path, b, self.duration, out, video=video,
+                                    log=self._log, progress=self._set_progress)
+            if b >= self.duration - 0.02:
+                return pc.cut_media(path, 0.0, a, out, video=video,
+                                    log=self._log, progress=self._set_progress)
+            return pc.cut_gap(path, a, b, out, video=video, log=self._log,
+                              progress=self._set_progress)
+
         def job():
             self._phase(t("st_cut"), 2, 70)
             ext = ".mkv" if has_v else (os.path.splitext(src or "")[1] or ".wav")
+            if not has_v and not keep:
+                ext = ".wav"          # mittendrin schneiden heisst neu kodieren
             new_src = os.path.join(work, "scene%d%s" % (n, ext))
-            pc.cut_media(src or audio, a, b, new_src, video=has_v,
-                         log=self._log, progress=self._set_progress)
+            cut(src or audio, new_src, has_v)
             self._phase(t("st_audio"), 70, 80)
             new_audio = os.path.join(work, "audio_cut%d.wav" % n)
             pc.extract_audio(new_src, new_audio, log=self._log)
             new_voc = new_nov = None
             if voc and os.path.isfile(voc):
                 new_voc = os.path.join(work, "vocals_cut%d.wav" % n)
-                pc.cut_media(voc, a, b, new_voc, video=False, log=self._log)
+                cut(voc, new_voc, False)
             if nov and os.path.isfile(nov):
                 new_nov = os.path.join(work, "backing_cut%d.wav" % n)
-                pc.cut_media(nov, a, b, new_nov, video=False, log=self._log)
+                cut(nov, new_nov, False)
             self._phase(t("st_wave"), 80, 98)
             data, sr = pc.load_mono(new_voc or new_audio)
             self._cut_result = (new_src, new_audio, new_voc, new_nov, data, sr,
@@ -2133,12 +2192,17 @@ class App(tk.Tk):
             (new_src, new_audio, new_voc, new_nov,
              data, sr, dur) = self._cut_result
             self._cut_result = None
-            clips, dropped = pc.cut_clips(self.clips, a, b)
+            if keep:
+                clips, dropped = pc.cut_clips(self.clips, a, b)
+            else:
+                clips, dropped = pc.remove_span(self.clips, a, b)
             self.video_path, self.audio_path = new_src, new_audio
             self.vocals_path, self.backing_path = new_voc, new_nov
             self.wave_data, self.wave_sr = data, sr
-            self.duration = dur if dur > 0 else span
-            self.src_offset = float(self.src_offset or 0.0) + a
+            self.duration = dur if dur > 0 else left
+            if keep:
+                self.src_offset = float(self.src_offset or 0.0) + a
+            self.sel_span = None
             self.clips = clips
             self._peak_cache = (None, None)
             self._preview_cache = {}
@@ -2154,6 +2218,7 @@ class App(tk.Tk):
             self._undo.clear()
             self._redo.clear()
             self._log(t("log_cut", pc.fmt_time(a), pc.fmt_time(b), dropped))
+            self._peak_cache = (None, None)
             self._refresh_track_box()
             self._zoom_all()
             self.refresh_list()
@@ -2993,6 +3058,16 @@ class App(tk.Tk):
             cv.create_line(GUTTER + x, y0, GUTTER + x, y1, fill=WAVE)
         cv.create_line(GUTTER, mid, w, mid, fill=LINE)
         cv.create_line(GUTTER, bot, w, bot, fill=LINE)
+        # ---- markierter Abschnitt / the marked section
+        if self.sel_span:
+            sa, sb = self.sel_span
+            x0, x1 = self._t2x(sa), self._t2x(sb)
+            if x1 > GUTTER and x0 < w:
+                x0, x1 = max(GUTTER, x0), min(w, x1)
+                cv.create_rectangle(x0, RULER_H, x1, bot, fill=ACC2,
+                                    outline="", stipple="gray25")
+                cv.create_line(x0, RULER_H, x0, bot, fill=ACC2)
+                cv.create_line(x1, RULER_H, x1, bot, fill=ACC2)
         cv.create_text(8, mid, anchor="w", fill="#5a6180", font=(FONT, 9),
                        text=("Vocals" if self.vocals_path else "Audio"))
 
@@ -3131,8 +3206,12 @@ class App(tk.Tk):
             self._drag = None
             return
         if kind in ("ruler", "wave"):
-            self.playhead = max(0.0, min(self.duration, self._x2t(event.x)))
-            self._drag = ("scrub", None)
+            tt = max(0.0, min(self.duration, self._x2t(event.x)))
+            self.playhead = tt
+            self._drag = ("range", tt)
+            if self.sel_span:
+                self.sel_span = None       # ein Klick loescht die Markierung
+                self.draw_wave()
             self._draw_playhead()
             return
         tt = self._x2t(event.x)
@@ -3157,8 +3236,15 @@ class App(tk.Tk):
             return
         kind = self._drag[0]
         tt = max(0.0, min(self.duration, self._x2t(event.x)))
-        if kind == "scrub":
+        if kind == "range":
             self.playhead = tt
+            self.canvas.delete("selpreview")
+            t0 = self._drag[1]
+            if abs(tt - t0) > 0.01:
+                self.canvas.create_rectangle(
+                    self._t2x(min(t0, tt)), RULER_H, self._t2x(max(t0, tt)),
+                    RULER_H + WAVE_H, fill=ACC2, outline="", stipple="gray25",
+                    tags="selpreview")
             self._draw_playhead()
             return
         if kind == "new":
@@ -3200,8 +3286,18 @@ class App(tk.Tk):
         drag = self._drag
         self._drag = None
         self.canvas.delete("newsel")
+        self.canvas.delete("selpreview")
         kind = drag[0]
-        if kind == "scrub":
+        if kind == "range":
+            t0 = drag[1]
+            tt = max(0.0, min(self.duration, self._x2t(event.x)))
+            a, b = min(t0, tt), max(t0, tt)
+            # Ein Klick ohne Ziehen ist keine Markierung, nur der Zeiger.
+            self.sel_span = (a, b) if (b - a) >= 0.05 else None
+            if self.sel_span:
+                self._set_status(t("sel_hint", pc.fmt_time(a), pc.fmt_time(b),
+                                   pc.fmt_time(b - a)))
+            self.draw_wave()
             return
         if kind == "new":
             _k, t0, lane = drag
@@ -3268,6 +3364,15 @@ class App(tk.Tk):
         elif kind in ("wave", "ruler") and self.duration > 0:
             at = max(0.0, min(self.duration, self._x2t(event.x)))
             m = self._menu(self)
+            if self.sel_span:
+                sa, sb = self.sel_span
+                m.add_command(label=t("sel_cut_out", pc.fmt_time(sa),
+                                      pc.fmt_time(sb)),
+                              command=self.cut_out_selection)
+                m.add_command(label=t("sel_keep", pc.fmt_time(sa),
+                                      pc.fmt_time(sb)),
+                              command=self.keep_selection)
+                m.add_separator()
             m.add_command(label=t("cut_before", pc.fmt_time(at)),
                           command=lambda: self.cut_scene(at, False))
             m.add_command(label=t("cut_after", pc.fmt_time(at)),

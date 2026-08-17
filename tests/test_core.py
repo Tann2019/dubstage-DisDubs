@@ -179,6 +179,31 @@ class CutClips(unittest.TestCase):
         # die Vorlage bleibt unberuehrt / the input is not touched
         self.assertAlmostEqual(clips[2]["start"], 3.0)
 
+    def test_remove_span_closes_the_gap(self):
+        clips = [{"start": 1.0, "end": 2.0, "caption": "davor"},
+                 {"start": 3.2, "end": 3.8, "caption": "mittendrin"},
+                 {"start": 5.0, "end": 6.0, "caption": "danach"},
+                 {"start": 2.5, "end": 5.5, "caption": "darueber"}]
+        kept, dropped = pc.remove_span(clips, 3.0, 4.0)
+        self.assertEqual(dropped, 1)                       # der mittendrin
+        names = [c["caption"] for c in kept]
+        self.assertEqual(names, ["davor", "danach", "darueber"])
+        # davor bleibt, danach rueckt um die Luecke heran
+        self.assertAlmostEqual(kept[0]["start"], 1.0)
+        self.assertAlmostEqual(kept[1]["start"], 4.0)
+        self.assertAlmostEqual(kept[1]["end"], 5.0)
+        # der lange Clip ueberspannt die Luecke und wird um sie kuerzer
+        self.assertAlmostEqual(kept[2]["start"], 2.5)
+        self.assertAlmostEqual(kept[2]["end"], 4.5)
+
+    def test_remove_span_clamps_what_reaches_in(self):
+        kept, _d = pc.remove_span([{"start": 2.0, "end": 3.5}], 3.0, 4.0)
+        self.assertAlmostEqual(kept[0]["start"], 2.0)
+        self.assertAlmostEqual(kept[0]["end"], 3.0)
+        kept, _d = pc.remove_span([{"start": 3.5, "end": 5.0}], 3.0, 4.0)
+        self.assertAlmostEqual(kept[0]["start"], 3.0)
+        self.assertAlmostEqual(kept[0]["end"], 4.0)
+
     def test_too_short_leftovers_are_dropped(self):
         kept, dropped = pc.cut_clips([{"start": 1.99, "end": 3.0}], 2.0, 8.0)
         self.assertEqual(len(kept), 1)
@@ -293,6 +318,23 @@ class WithFfmpeg(unittest.TestCase):
         wav_cut = os.path.join(self.d, "cut2.wav")
         pc.cut_media(wav, 1.0, 2.0, wav_cut, video=False)
         self.assertAlmostEqual(pc.probe_duration(wav_cut), 1.0, delta=0.05)
+
+    def test_cut_gap_joins_what_is_left(self):
+        # Toene bei 1-2.5, 4-6 und 8-9.2 s. Wir schneiden 3-7 heraus,
+        # der mittlere Ton faellt also weg und die Reste haengen zusammen.
+        out = os.path.join(self.d, "gap.mkv")
+        pc.cut_gap(self.video, 3.0, 7.0, out)
+        self.assertAlmostEqual(pc.probe_duration(out), 8.0, delta=0.2)
+        self.assertTrue(pc.has_video_stream(out))
+
+        wav = os.path.join(self.d, "gap.wav")
+        pc.extract_audio(out, wav)
+        data, sr = pc.load_mono(wav)
+        found = pc.detect_clips(data, sr)
+        self.assertEqual(len(found), 2, found)
+        # der erste Ton liegt noch da, der dritte ist um 4 s herangerueckt
+        self.assertAlmostEqual(found[0][0], 1.0, delta=0.2)
+        self.assertAlmostEqual(found[1][0], 4.0, delta=0.25)
 
     def test_decode_pcm(self):
         d = pc.decode_pcm(self.video, 1.0, 2.5)

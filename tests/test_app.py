@@ -232,6 +232,43 @@ class AppSmoke(unittest.TestCase):
         self.assertIsNone(app._caption_space())
         self.assertEqual(len(played), 2)
 
+    def test_drag_on_the_wave_marks_a_span(self):
+        app = self.app
+        app.update()
+        y = self.m.RULER_H + 4                    # in der Wellenform
+        x0, x1 = app._t2x(4.0), app._t2x(9.0)
+        app._canvas_down(E(int(x0), y))
+        app._canvas_move(E(int(x1), y))
+        app._canvas_up(E(int(x1), y))
+        self.assertIsNotNone(app.sel_span, "no span was marked")
+        a, b = app.sel_span
+        self.assertAlmostEqual(a, 4.0, delta=0.2)
+        self.assertAlmostEqual(b, 9.0, delta=0.2)
+
+        # Der markierte Abschnitt wird auch gezeichnet.
+        app.draw_wave(); app.update()
+        with_span = len(app.canvas.find_all())
+
+        # Ein Klick ohne Ziehen ist keine Markierung, nur der Zeiger.
+        app._canvas_down(E(int(app._t2x(2.0)), y))
+        app._canvas_up(E(int(app._t2x(2.0)), y))
+        self.assertIsNone(app.sel_span)
+        self.assertAlmostEqual(app.playhead, 2.0, delta=0.2)
+        app.update()
+        self.assertLess(len(app.canvas.find_all()), with_span,
+                        "the marked span is not drawn")
+
+    def test_cutting_out_a_span_needs_a_confirmation(self):
+        # Ohne Ja passiert nichts / nothing happens without a yes
+        app = self.app
+        app.audio_path = os.path.join(self.m.OUT_DIR, "nope.wav")
+        app.sel_span = (4.0, 6.0)
+        self.dlg.answer = False
+        before = len(app.clips)
+        app.cut_out_selection()
+        self.assertEqual(len(app.clips), before)
+        self.assertIn("ask_bool_yesno", self.dlg.kinds())
+
     def test_language_switch_keeps_state(self):
         app = self.app
         app.lang_var.set("Deutsch"); app._change_lang(); app.update()
@@ -469,6 +506,46 @@ class FullRun(unittest.TestCase):
             for old, new in zip(starts, new_starts):
                 self.assertAlmostEqual(new, old - (first - 0.3), delta=0.02)
             self.assertAlmostEqual(app.src_offset, first - 0.3, delta=0.02)
+
+            # --- einen Abschnitt mittendrin herausschneiden / cut out
+            dur_before = app.duration
+            before = [dict(c) for c in app.clips]
+            # eine wirklich leere Strecke suchen: die Clips liegen auf
+            # mehreren Spuren und ueberlappen sich teilweise.
+            merged = []
+            for st, en in sorted((c["start"], c["end"]) for c in app.clips):
+                if merged and st <= merged[-1][1] + 1e-6:
+                    merged[-1][1] = max(merged[-1][1], en)
+                else:
+                    merged.append([st, en])
+            hole = None
+            for i in range(len(merged) - 1):
+                if merged[i + 1][0] - merged[i][1] > 0.6:
+                    hole = (merged[i][1] + 0.15, merged[i + 1][0] - 0.15)
+                    break
+            self.assertIsNotNone(hole, "no empty stretch between the clips")
+            gap_a, gap_b = hole
+
+            self.dlg.answer = True
+            app._cut_scene(gap_a, gap_b, keep=False)
+            end = time.time() + 60
+            while app.busy and time.time() < end:
+                self.pump(0.2)
+            self.dlg.answer = False
+            self.assertFalse(app.busy, "the cut-out did not finish")
+
+            # Kein Clip lag in der Luecke, also bleiben alle - und sie
+            # stehen genau da, wo remove_span sie hinrechnet.
+            want, dropped = pc.remove_span(before, gap_a, gap_b)
+            self.assertEqual(dropped, 0)
+            self.assertEqual(len(app.clips), len(before), "a clip was lost")
+            for w, got in zip(sorted(want, key=lambda c: c["start"]),
+                              sorted(app.clips, key=lambda c: c["start"])):
+                self.assertAlmostEqual(got["start"], w["start"], delta=0.02)
+                self.assertAlmostEqual(got["end"], w["end"], delta=0.02)
+            self.assertAlmostEqual(app.duration, dur_before - (gap_b - gap_a),
+                                   delta=0.3)
+            self.assertTrue(pc.has_video_stream(app.video_path))
 
             # und daraus laesst sich weiter bauen / and it still builds
             clips = sorted([dict(x) for x in app.clips],
