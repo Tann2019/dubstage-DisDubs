@@ -46,6 +46,7 @@ Die Zeitleiste zeigt oben die Wellenform und darunter **eine Spur je Sprecher**.
 | Trimmen | linken oder rechten Rand ziehen |
 | Auswählen | anklicken, oder die Zeile in der Liste |
 | Anhören | Doppelklick auf den Clip, **Leertaste** oder der ▶-Knopf; Doppelklick auf die Wellenform spielt 8 s ab dort |
+| Über die Kanten hinaus hören | standardmäßig an: **Anlauf ±0,5 s** neben ▶ spielt eine halbe Sekunde vor und nach dem Clip — so hörst du, ob die Zeile abgeschnitten ist. Ausgeschaltet startet die Wiedergabe da, wo der Zeiger steht |
 | Feinjustieren | ← → (0,05 s), mit Shift 0,01 s, mit Strg 0,5 s |
 | Spur wechseln | ↑ ↓, oder das Feld „Sprecher / Spur" |
 | Teilen | **S** oder der Knopf — am Playhead, wenn er im Clip steht, sonst in der Mitte |
@@ -57,7 +58,7 @@ Die Zeitleiste zeigt oben die Wellenform und darunter **eine Spur je Sprecher**.
 
 Zu viele oder zu wenige Clips? **Erkennung ▾** öffnen, **Empfindlichkeit** oder **Max. Cliplänge** ändern und **„Jetzt neu erkennen"** wählen — das ersetzt alle Clips (Rückgängig holt sie zurück).
 
-**Untertitel:** Clip anklicken, ins Untertitelfeld tippen, **Enter** — das speichert und springt gleich zum nächsten Clip. So arbeitest du dich ohne Mausklicks durch. Das kleine Bild links zeigt das Videobild am Clipanfang, damit du siehst, wer gerade spricht — und beim Anhören läuft dort das Video mit. Freiwillig: Clips ohne Untertitel funktionieren normal.
+**Untertitel:** Clip anklicken, ins Untertitelfeld tippen, **Enter** — das speichert und springt gleich zum nächsten Clip. So arbeitest du dich ohne Mausklicks durch. Die **Leertaste** im Untertitelfeld hört den Clip an, solange noch nichts getippt ist (und stoppt ihn wieder); sobald Text im Feld steht, ist sie ein ganz normales Leerzeichen. Das kleine Bild links zeigt das Videobild am Clipanfang, damit du siehst, wer gerade spricht — und beim Anhören läuft dort das Video mit. Freiwillig: Clips ohne Untertitel funktionieren normal.
 
 Das Menü **Untertitel ▾** füllt sie auf Wunsch vor: aus einer SRT- oder VTT-Datei oder direkt von YouTube (die eigenen Untertitel des Videos, sonst die automatischen — die sind eher ein Rohentwurf). Die Cues werden über die Zeit den Clips zugeordnet; ob vorhandene Untertitel überschrieben werden, entscheidest du.
 

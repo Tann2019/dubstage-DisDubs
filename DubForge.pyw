@@ -70,6 +70,7 @@ LANE_H = 34
 ADD_H = 24
 EDGE_PX = 6           # Griffbreite an Cliprändern / edge grab width
 PLAY_FPS = 10         # Bildrate der bewegten Vorschau / preview frame rate
+PLAY_PAD = 0.5        # Anlauf und Auslauf beim Anhoeren / run-up, run-out
 
 FONT = "Segoe UI"
 MONO = "Consolas"
@@ -180,9 +181,11 @@ T = {
     "insp_end":     ("Ende:", "End:"),
     "caption":      ("Untertitel:", "Subtitle:"),
     "caption_hint": ("Enter = speichern und zum naechsten Clip   ·   "
-                     "Esc = zurueck zur Zeitleiste   ·   Strg+Leertaste = anhoeren",
+                     "Leertaste = anhoeren, solange nichts getippt ist   ·   "
+                     "Esc = zurueck zur Zeitleiste",
                      "Enter = save and go to the next clip   ·   "
-                     "Esc = back to the timeline   ·   Ctrl+Space = play"),
+                     "Space = play as long as nothing is typed   ·   "
+                     "Esc = back to the timeline"),
     "keys_hint":    ("Leertaste = anhoeren  ·  S = teilen  ·  Strg+D = duplizieren  ·  "
                      "Entf = loeschen  ·  Pfeile = schieben / Spur wechseln  ·  "
                      "Strg+Z/Y = rueckgaengig/wiederholen",
@@ -253,6 +256,7 @@ T = {
     "crash":        ("%s\n\nDetails stehen in dubforge.log neben dem Programm.",
                      "%s\n\nDetails are in dubforge.log next to the program."),
     "btn_play":     ("Anhoeren", "Play"),
+    "play_pad":     ("Anlauf ±0,5 s", "Run-up ±0.5 s"),
     "btn_stop":     ("Stopp", "Stop"),
     "btn_split":    ("Teilen", "Split"),
     "btn_dup":      ("Duplizieren", "Duplicate"),
@@ -632,6 +636,7 @@ class App(tk.Tk):
         self.sep_var = tk.BooleanVar(value=c.get("separate", True))
         self.sens = tk.DoubleVar(value=c.get("sens", 1.0))
         self.maxlen = tk.DoubleVar(value=c.get("maxlen", 6.0))
+        self.play_pad = tk.BooleanVar(value=bool(c.get("play_pad", True)))
         self.pack_name = tk.StringVar(value=c.get("pack_name", "Mein_Pack"))
         self.author = tk.StringVar(value=c.get("author", ""))
         self.is_dub = tk.BooleanVar(value=c.get("is_dub", True))
@@ -846,7 +851,11 @@ class App(tk.Tk):
                                    command=self._play_selected)
         self.play_btn.pack(side="left")
         ttk.Button(bar, text="■", width=3,
-                   command=self._stop_play).pack(side="left", padx=(2, 10))
+                   command=self._stop_play).pack(side="left", padx=(2, 6))
+        self.pad_chk = ttk.Checkbutton(bar, text=t("play_pad"),
+                                       variable=self.play_pad, takefocus=False,
+                                       command=self._play_pad_changed)
+        self.pad_chk.pack(side="left", padx=(0, 10))
         ttk.Button(bar, text=t("zoom_in"), width=8, style="Small.TButton",
                    command=lambda: self._zoom(0.6)).pack(side="left")
         ttk.Button(bar, text=t("zoom_out"), width=8, style="Small.TButton",
@@ -962,6 +971,7 @@ class App(tk.Tk):
         self.caption_entry.bind("<Return>", self._caption_next)
         self.caption_entry.bind("<FocusOut>", lambda e: self._caption_save())
         self.caption_entry.bind("<Escape>", lambda e: self.canvas.focus_set())
+        self.caption_entry.bind("<space>", self._caption_space)
         self.caption_entry.bind("<Control-space>",
                                 lambda e: (self._play_selected(), "break")[1])
         f3 = ttk.Frame(fields)
@@ -2359,6 +2369,39 @@ class App(tk.Tk):
             self.caption_entry.selection_range(0, "end")
         return "break"
 
+    def _caption_untouched(self):
+        """Steht im Feld noch nichts, das man behalten will? Leer zaehlt,
+        und auch der beim Sprung markierte Text - der waere beim naechsten
+        Tastendruck ohnehin weg.
+        Is there nothing in the box worth keeping yet - empty, or the text
+        still fully selected from the jump (the next key would replace it)?
+        """
+        txt = self.caption_var.get()
+        if not txt:
+            return True
+        try:
+            e = self.caption_entry
+            return (e.selection_present()
+                    and int(e.index("sel.first")) == 0
+                    and int(e.index("sel.last")) >= len(txt))
+        except Exception:
+            return False
+
+    def _caption_space(self, _e=None):
+        """Leertaste im Untertitel-Feld: solange nichts getippt ist, hoert
+        man den Clip an - und stoppt ihn mit der Leertaste wieder. Sobald
+        Text im Feld steht, ist es eine ganz normale Leertaste.
+        Space in the subtitle box plays (and stops) the clip while nothing
+        has been typed; after that it is an ordinary space again.
+        """
+        if not self._caption_untouched():
+            return None
+        if self._play:
+            self._stop_play()
+        else:
+            self._play_selected()
+        return "break"
+
     def _focus_caption(self):
         if self.selected is None:
             return
@@ -2468,11 +2511,41 @@ class App(tk.Tk):
         self._after_edit()
 
     # ------------------------------------------------------------ Wiedergabe
+    def _play_span(self, clip):
+        """Welcher Bereich beim Anhoeren laeuft.
+
+        Mit Anlauf (Standard): der Clip plus eine halbe Sekunde an beiden
+        Enden - so hoert man, ob die Zeile vorn oder hinten abgeschnitten
+        ist. Ohne Anlauf faengt es da an, wo der Zeiger steht: steht er im
+        Clip, laeuft es bis zu dessen Ende, steht er ausserhalb, acht
+        Sekunden von dort. Ohne Zeiger genau der Clip.
+
+        With the run-up (the default) the clip is played with half a second
+        on either side. Without it playback starts where the cursor is:
+        inside the clip up to its end, outside it eight seconds from there.
+        With no cursor, exactly the clip.
+        """
+        a, b = float(clip["start"]), float(clip["end"])
+        dur = self.duration if self.duration else (b + PLAY_PAD)
+        if self.play_pad.get():
+            return max(0.0, a - PLAY_PAD), min(dur, b + PLAY_PAD)
+        pos = self.playhead
+        if pos is None:
+            return a, b
+        if a <= pos < b - 0.05:
+            return pos, b
+        if pos < a or pos > b:
+            return pos, min(dur, pos + 8.0)
+        return a, b
+
+    def _play_pad_changed(self):
+        self.cfg["play_pad"] = bool(self.play_pad.get())
+
     def _play_selected(self):
         if self.selected is None or not self.audio_path:
             return
-        c = self.clips[self.selected]
-        self._play_range(c["start"], c["end"])
+        a, b = self._play_span(self.clips[self.selected])
+        self._play_range(a, b)
 
     def _play_track(self, i):
         lst = sorted((c for c in self.clips if c["track"] == i),
@@ -3438,6 +3511,7 @@ class App(tk.Tk):
             "vheight": self.vheight.get(),
             "target_dir": self.target_dir.get(),
             "log_open": self.log_open,
+            "play_pad": bool(self.play_pad.get()),
         })
         try:
             if self.state() == "normal":

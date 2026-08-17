@@ -7,6 +7,31 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Listening to a clip plays a little around it.** Half a second before and
+  half a second after, so you hear whether the line is cut off at either
+  edge instead of a blip that starts and ends mid-word. The switch
+  **Run-up ±0.5 s** next to the play button turns it off, and then playback
+  starts where the cursor stands: inside the clip it runs to the clip's end,
+  outside it plays eight seconds from there. The setting is remembered.
+- **Space in the subtitle field plays the clip** as long as nothing has been
+  typed - which is exactly the state right after Enter jumped to the next
+  clip. Pressing it again stops playback. As soon as there is text in the
+  field it is an ordinary space again, so the run through a scene is Enter,
+  Space to listen, type, Enter. It also protects the caption you just
+  jumped to: it was fully selected, so a space used to wipe it.
+
+### Fixed
+
+- **The test run could stop and wait for a click.** Reopening a pack without
+  a backing track asks whether to separate the vocals, and with Demucs
+  installed that dialog appeared in the middle of the automated run - who
+  saw it depended on whether the Demucs probe had finished yet. The GUI
+  tests now replace `messagebox`, `filedialog` and `simpledialog` with stubs
+  that answer at once and record what was asked, and the full run checks
+  that this very question is asked.
+
 ## [1.2.3] - 2026-08-16
 
 ### Changed

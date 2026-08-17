@@ -12,6 +12,7 @@ bauen -> DubStage laedt -> zip -> wieder oeffnen -> neu bauen.
 import os
 import sys
 import time
+import types
 import shutil
 import tempfile
 import unittest
@@ -50,6 +51,51 @@ class E:
         self.x, self.y = x, y
 
 
+class Dialogs:
+    """Kein Test darf an einem Dialog haengen bleiben.
+
+    Fragefenster warten auf einen Klick - im Test steht dann niemand davor,
+    und der Lauf bleibt einfach stehen. Hier werden messagebox, filedialog
+    und simpledialog ersetzt: jeder Aufruf wird mitgeschrieben und sofort
+    beantwortet. `answer` ist die Antwort auf alle Ja/Nein-Fragen.
+
+    Dialogs wait for a click; in a test nobody is there to give one and the
+    run just stops. This replaces messagebox, filedialog and simpledialog:
+    every call is recorded and answered at once.
+    """
+
+    def __init__(self, answer=False):
+        self.seen = []
+        self.answer = answer
+
+    def _rec(self, kind, result):
+        def call(*a, **kw):
+            title = (a[0] if a else kw.get("title")) or ""
+            self.seen.append((kind, str(title)))
+            return self.answer if kind.startswith("ask_bool") else result
+        return call
+
+    def install(self, mod):
+        mod.messagebox = types.SimpleNamespace(
+            askyesno=self._rec("ask_bool_yesno", False),
+            askokcancel=self._rec("ask_bool_okcancel", False),
+            askretrycancel=self._rec("ask_bool_retry", False),
+            askyesnocancel=self._rec("askyesnocancel", None),
+            showinfo=self._rec("showinfo", "ok"),
+            showwarning=self._rec("showwarning", "ok"),
+            showerror=self._rec("showerror", "ok"))
+        mod.filedialog = types.SimpleNamespace(
+            askopenfilename=self._rec("askopenfilename", ""),
+            asksaveasfilename=self._rec("asksaveasfilename", ""),
+            askdirectory=self._rec("askdirectory", ""))
+        mod.simpledialog = types.SimpleNamespace(
+            askstring=self._rec("askstring", None))
+        return self
+
+    def kinds(self):
+        return [k for k, _title in self.seen]
+
+
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
 class AppSmoke(unittest.TestCase):
     """Nur die Oberflaeche, ohne ffmpeg / UI only, synthetic data."""
@@ -61,6 +107,7 @@ class AppSmoke(unittest.TestCase):
 
     def setUp(self):
         import numpy as np
+        self.dlg = Dialogs().install(self.m)
         self.app = self.m.App()
         app = self.app
         sr = 8000
@@ -124,6 +171,66 @@ class AppSmoke(unittest.TestCase):
         app._caption_next()
         self.assertEqual(app.selected, 1)
         self.assertIn("3 clips", app.stats_lbl.cget("text"))
+
+    def test_play_span_run_up_and_cursor(self):
+        app = self.app
+        clip = app.clips[0]                      # 1.0 - 2.4
+        pad = self.m.PLAY_PAD
+
+        # Mit Anlauf: eine halbe Sekunde vor und nach dem Clip.
+        app.play_pad.set(True)
+        self.assertEqual(app._play_span(clip), (1.0 - pad, 2.4 + pad))
+
+        # Am Anfang der Aufnahme wird nicht ins Negative gerutscht,
+        # am Ende nicht ueber die Laenge hinaus.
+        app.play_pad.set(True)
+        self.assertEqual(app._play_span({"start": 0.1, "end": 0.6})[0], 0.0)
+        self.assertEqual(app._play_span({"start": 19.0, "end": 19.9})[1],
+                         app.duration)
+
+        # Ohne Anlauf und ohne Zeiger: genau der Clip.
+        app.play_pad.set(False)
+        app.playhead = None
+        self.assertEqual(app._play_span(clip), (1.0, 2.4))
+
+        # Zeiger im Clip: von dort bis zum Ende des Clips.
+        app.playhead = 1.8
+        self.assertEqual(app._play_span(clip), (1.8, 2.4))
+
+        # Zeiger ausserhalb: acht Sekunden ab dort.
+        app.playhead = 12.0
+        self.assertEqual(app._play_span(clip), (12.0, 20.0))
+        app.playhead = None
+
+    def test_space_in_caption_plays_until_typing(self):
+        app = self.app
+        played = []
+        app._play_selected = lambda: played.append(1)
+
+        # Leeres Feld: die Leertaste hoert an, statt ein Leerzeichen zu setzen.
+        app.selected = 1
+        app._load_inspector()
+        app.caption_entry.focus_set()
+        self.assertEqual(app._caption_space(), "break")
+        self.assertEqual(len(played), 1)
+
+        # Frisch angesprungener Clip: der Text ist noch ganz markiert,
+        # die Leertaste wuerde ihn ersetzen - also lieber anhoeren.
+        app.selected = 0
+        app._load_inspector()
+        app.caption_entry.focus_set()
+        app.caption_entry.selection_range(0, "end")
+        app.update()
+        self.assertEqual(app._caption_space(), "break")
+        self.assertEqual(len(played), 2)
+
+        # Sobald getippt wurde, ist es wieder eine normale Leertaste.
+        app.caption_entry.selection_clear()
+        app.caption_var.set("Hallo")
+        app.caption_entry.icursor("end")
+        app.update()
+        self.assertIsNone(app._caption_space())
+        self.assertEqual(len(played), 2)
 
     def test_language_switch_keeps_state(self):
         app = self.app
@@ -226,6 +333,7 @@ class FullRun(unittest.TestCase):
 
     def test_full_run(self):
         m = self.m
+        self.dlg = Dialogs().install(m)
         app = self.app = m.App()
         try:
             app.update()
@@ -243,15 +351,19 @@ class FullRun(unittest.TestCase):
             # --- Wiedergabe / playback: backend chosen, playhead moves,
             #     frames animate, stops by itself
             c = app.clips[0]
+            a, b = app._play_span(c)             # mit Anlauf / with the run-up
+            self.assertLess(a, c["start"])
+            self.assertGreater(b, c["end"])
             app._play_selected()
             self.pump(0.8)
             self.assertIsNotNone(app._play, "playback did not start")
             self.assertIn(getattr(app, "_last_backend", None),
                           ("sounddevice", "ffplay", "winsound"))
-            self.assertGreater(app.playhead, c["start"] + 0.2)
+            self.assertGreater(app.playhead, a + 0.2)
+            self.assertLessEqual(app.playhead, b)
             self.pump(0.6)
             self.assertGreater(app._play_frame_idx, 0, "preview did not animate")
-            self.pump(c["end"] - c["start"])
+            self.pump(b - a)
             self.assertIsNone(app._play, "playback did not stop")
 
             # --- Spuren / tracks
@@ -296,6 +408,11 @@ class FullRun(unittest.TestCase):
             before = [(round(x["start"], 3), round(x["end"], 3), x["track"],
                        x["caption"]) for x in clips]
             app._do_open_pack(dest); app._after_open(); app.update()
+            # Der Pack wurde ohne Trennung gebaut, hat also keinen
+            # _backing_track: mit Demucs im Rechner fragt DubForge beim
+            # Wiederoeffnen nach. Ohne Stubs bliebe der Lauf hier stehen.
+            if app.have_demucs:
+                self.assertIn("ask_bool_yesno", self.dlg.kinds())
             after = [(round(x["start"], 3), round(x["end"], 3), x["track"],
                       x["caption"]) for x in app.clips]
             self.assertEqual(after, before)

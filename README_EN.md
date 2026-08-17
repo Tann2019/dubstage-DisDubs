@@ -46,6 +46,7 @@ The timeline shows the waveform on top and one **track per speaker** below it. D
 | Trim | drag its left or right edge |
 | Select | click it, or click the row in the list |
 | Listen | double-click the clip, **Space**, or the ▶ button; double-click the waveform to hear 8 s from there |
+| Listen past the edges | on by default: **Run-up ±0.5 s** next to ▶ plays half a second before and after the clip, so you hear whether the line is cut off. Untick it and playback starts where the cursor is instead |
 | Nudge | ← → (0.05 s), Shift for 0.01 s, Ctrl for 0.5 s |
 | Change track | ↑ ↓, or the "Speaker / track" box |
 | Split | **S**, or the button — splits at the playhead if it sits inside the clip, otherwise in the middle |
@@ -57,7 +58,7 @@ The timeline shows the waveform on top and one **track per speaker** below it. D
 
 Too many or too few clips? Open **Detect ▾**, change **Sensitivity** or **Max. clip length** and choose **"Detect again now"** — this replaces all clips (Undo brings them back).
 
-**Subtitles:** click a clip, type in the subtitle field, press **Enter** — that saves it and jumps to the next clip, so you can work through everything without touching the mouse. The small picture on the left shows the frame at the clip's start, so you can see who is talking, and plays the video along while you listen to a clip. Optional: clips without a subtitle work normally.
+**Subtitles:** click a clip, type in the subtitle field, press **Enter** — that saves it and jumps to the next clip, so you can work through everything without touching the mouse. **Space** in the subtitle field plays the clip as long as you have not typed anything yet (and stops it again); once there is text in the field it is an ordinary space. The small picture on the left shows the frame at the clip's start, so you can see who is talking, and plays the video along while you listen to a clip. Optional: clips without a subtitle work normally.
 
 The **Subtitles ▾** menu can fill them in for you: from an SRT or VTT file, or straight from YouTube (the video's own subtitles if it has them, otherwise the automatic ones — treat those as a rough draft). Cues are matched to clips by time; you choose whether existing subtitles are overwritten.
 
