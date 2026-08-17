@@ -714,6 +714,59 @@ def trim_local(path, start, end, workdir, log=None):
     return out
 
 
+def cut_media(path, start, end, out, video=True, log=None, progress=None):
+    """Schneidet eine geladene Datei auf [start, end].
+
+    Anders als trim_local wird das Bild hier absichtlich neu kodiert: ein
+    Kopier-Schnitt springt auf den naechsten Keyframe, und die Clips der
+    laufenden Sitzung wuerden danach um bis zu eine Sekunde daneben liegen.
+    Ton wird zu PCM geschnitten (sample-genau). Eine Quelle ohne Bild
+    (MP3 und Co.) wird kopiert, damit das Cover erhalten bleibt.
+
+    Unlike trim_local the picture is re-encoded on purpose: a copy cut
+    snaps to the next keyframe and the clips of the running session would
+    end up off by as much as a second. Audio is cut to PCM, which is
+    sample-accurate. A source without a picture is copied so that its
+    cover art survives.
+    """
+    a = max(0.0, float(start))
+    want = max(0.05, float(end) - a)
+    cmd = [ffmpeg(), "-y", "-hide_banner", "-ss", "%.3f" % a, "-i", path,
+           "-t", "%.3f" % want]
+    if video:
+        cmd += ["-map", "0:v:0?", "-map", "0:a:0?",
+                "-c:v", "libx264", "-crf", "18", "-preset", "veryfast",
+                "-pix_fmt", "yuv420p", "-c:a", "pcm_s16le"]
+    elif str(out).lower().endswith(".wav"):
+        cmd += ["-vn", "-c:a", "pcm_s16le"]
+    else:
+        cmd += ["-map", "0", "-c", "copy"]
+    cmd += ["-avoid_negative_ts", "make_zero", out]
+    run(cmd, log=log, progress=progress, total=want)
+    return out
+
+
+def cut_clips(clips, start, end, min_len=0.05):
+    """Schiebt Clips in die neue Zeitrechnung und wirft weg, was ausserhalb
+    liegt. Clips, die ueber die Kante ragen, werden dort gekappt.
+    Moves clips into the new time base, drops what falls outside and
+    clamps what straddles an edge. Returns (clips, dropped).
+    """
+    a, b = float(start), float(end)
+    kept, dropped = [], 0
+    for c in clips:
+        s, e = float(c["start"]) - a, float(c["end"]) - a
+        span = b - a
+        s, e = max(0.0, s), min(span, e)
+        if e - s < min_len:
+            dropped += 1
+            continue
+        c = dict(c)
+        c["start"], c["end"] = s, e
+        kept.append(c)
+    return kept, dropped
+
+
 def extract_audio(video, out_wav, log=None):
     run([ffmpeg(), "-y", "-hide_banner", "-i", video, "-vn",
          "-ac", "2", "-ar", "44100", "-c:a", "pcm_s16le", out_wav], log=log)

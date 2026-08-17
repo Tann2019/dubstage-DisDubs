@@ -157,6 +157,35 @@ class DisDubsCheck(unittest.TestCase):
         self.assertTrue(any("1 s" in x for x in w))
 
 
+class CutClips(unittest.TestCase):
+    """Clips in die neue Zeitrechnung schieben / clips into the new time."""
+
+    def test_shift_drop_and_clamp(self):
+        clips = [{"start": 0.5, "end": 1.5, "caption": "weg"},
+                 {"start": 1.8, "end": 2.6, "caption": "kante"},
+                 {"start": 3.0, "end": 4.0, "caption": "drin"},
+                 {"start": 7.5, "end": 8.5, "caption": "kante2"},
+                 {"start": 9.0, "end": 9.8, "caption": "auch weg"}]
+        kept, dropped = pc.cut_clips(clips, 2.0, 8.0)
+        self.assertEqual(dropped, 2)
+        self.assertEqual([c["caption"] for c in kept],
+                         ["kante", "drin", "kante2"])
+        # verschoben / shifted
+        self.assertAlmostEqual(kept[1]["start"], 1.0)
+        self.assertAlmostEqual(kept[1]["end"], 2.0)
+        # an den Kanten gekappt / clamped at the edges
+        self.assertAlmostEqual(kept[0]["start"], 0.0)
+        self.assertAlmostEqual(kept[2]["end"], 6.0)
+        # die Vorlage bleibt unberuehrt / the input is not touched
+        self.assertAlmostEqual(clips[2]["start"], 3.0)
+
+    def test_too_short_leftovers_are_dropped(self):
+        kept, dropped = pc.cut_clips([{"start": 1.99, "end": 3.0}], 2.0, 8.0)
+        self.assertEqual(len(kept), 1)
+        kept, dropped = pc.cut_clips([{"start": 1.0, "end": 2.02}], 2.0, 8.0)
+        self.assertEqual((kept, dropped), ([], 1))
+
+
 class I18n(unittest.TestCase):
     """Beide Sprachen muessen dieselben Platzhalter tragen / same placeholders."""
 
@@ -239,6 +268,31 @@ class WithFfmpeg(unittest.TestCase):
         found = pc.detect_clips(data, sr)
         self.assertEqual(len(found), 3, found)
         self.assertAlmostEqual(found[0][0], 1.0, delta=0.15)
+
+    def test_cut_media_is_frame_accurate(self):
+        # Der Schnitt muss genau sitzen: die Clips der Sitzung rechnen
+        # danach in der neuen Zeit weiter.
+        # Toene liegen bei 1-2.5, 4-6 und 8-9.2 s; [3, 7] faengt in der
+        # Stille an und haelt genau den mittleren Ton.
+        out = os.path.join(self.d, "cut.mkv")
+        pc.cut_media(self.video, 3.0, 7.0, out)
+        self.assertAlmostEqual(pc.probe_duration(out), 4.0, delta=0.12)
+        self.assertTrue(pc.has_video_stream(out))
+
+        # Der Ton wandert mit: der mittlere Ton beginnt bei 4 s, nach dem
+        # Schnitt ab 3 s also bei 1 s.
+        wav = os.path.join(self.d, "cut.wav")
+        pc.extract_audio(out, wav)
+        data, sr = pc.load_mono(wav)
+        found = pc.detect_clips(data, sr)
+        self.assertTrue(found, "no clips in the cut span")
+        self.assertAlmostEqual(found[0][0], 1.0, delta=0.2)
+        self.assertEqual(len(found), 1, found)
+
+        # Nur Ton (wav): sample-genau.
+        wav_cut = os.path.join(self.d, "cut2.wav")
+        pc.cut_media(wav, 1.0, 2.0, wav_cut, video=False)
+        self.assertAlmostEqual(pc.probe_duration(wav_cut), 1.0, delta=0.05)
 
     def test_decode_pcm(self):
         d = pc.decode_pcm(self.video, 1.0, 2.5)

@@ -71,6 +71,7 @@ ADD_H = 24
 EDGE_PX = 6           # Griffbreite an Cliprändern / edge grab width
 PLAY_FPS = 10         # Bildrate der bewegten Vorschau / preview frame rate
 PLAY_PAD = 0.5        # Anlauf und Auslauf beim Anhoeren / run-up, run-out
+MIN_SCENE = 1.0       # kuerzer darf eine Szene nicht werden / floor
 
 FONT = "Segoe UI"
 MONO = "Consolas"
@@ -257,6 +258,29 @@ T = {
                      "%s\n\nDetails are in dubforge.log next to the program."),
     "btn_play":     ("Anhoeren", "Play"),
     "play_pad":     ("Anlauf ±0,5 s", "Run-up ±0.5 s"),
+    "cut_before":   ("Alles davor abschneiden (ab %s)",
+                     "Cut off everything before here (from %s)"),
+    "cut_after":    ("Alles danach abschneiden (bis %s)",
+                     "Cut off everything after here (up to %s)"),
+    "dlg_cut_t":    ("Szene kuerzen", "Trim the scene"),
+    "dlg_cut_ask":  ("Aus %s wird ein Ausschnitt von %s - %s werden "
+                     "abgeschnitten%s.\n\nDas gilt fuer Bild und Ton dieser "
+                     "Sitzung. Rueckgaengig holt das nicht zurueck, die "
+                     "Quelldatei bleibt aber unberuehrt.\n\nJetzt schneiden?",
+                     "Out of %s the scene becomes a %s span - %s is cut "
+                     "off%s.\n\nThis applies to the picture and the sound of "
+                     "this session. Undo does not bring it back, though the "
+                     "source file itself stays untouched.\n\nCut now?"),
+    "dlg_cut_clips": (" und %d Clip(s) fallen weg", " and %d clip(s) fall away"),
+    "dlg_cut_short": ("Da bliebe fast nichts uebrig - mindestens %.1f "
+                      "Sekunden muessen stehen bleiben.",
+                      "That would leave almost nothing - at least %.1f "
+                      "seconds have to remain."),
+    "st_cut":       ("Szene schneiden ...", "Cutting the scene ..."),
+    "st_cut_done":  ("Szene gekuerzt - jetzt %s lang.",
+                     "Scene trimmed - %s long now."),
+    "log_cut":      ("Szene auf %s - %s gekuerzt (%d Clip(s) weggefallen).",
+                     "Scene trimmed to %s - %s (%d clip(s) dropped)."),
     "btn_stop":     ("Stopp", "Stop"),
     "btn_split":    ("Teilen", "Split"),
     "btn_dup":      ("Duplizieren", "Duplicate"),
@@ -2049,6 +2073,98 @@ class App(tk.Tk):
             self.draw_wave()
         self._bg(job, on_done=done, what=t("sep_now"))
 
+    # ------------------------------------------------- Szene selbst kuerzen
+    def cut_scene(self, at, keep_left):
+        """Schneidet Bild und Ton der Sitzung auf einen Teil zusammen: alles
+        vor bzw. nach `at` faellt weg. Die Clips wandern in die neue
+        Zeitrechnung mit, was draussen liegt verschwindet. So setzt man sich
+        nachtraeglich ein eigenes Ende, ohne neu herunterzuladen.
+
+        Cuts the session's picture and sound down to one part: everything
+        before (or after) `at` goes. The clips move into the new time base,
+        whatever lies outside is dropped - a way to set your own end after
+        the fact, without downloading the video again.
+        """
+        if not self.audio_path or self.duration <= 0:
+            messagebox.showinfo(t("dlg_first_t"), t("dlg_first"))
+            return
+        a = 0.0 if keep_left else float(at)
+        b = float(at) if keep_left else float(self.duration)
+        span, gone = b - a, self.duration - (b - a)
+        if span < MIN_SCENE or gone < 0.05:
+            messagebox.showinfo(t("dlg_cut_t"), t("dlg_cut_short", MIN_SCENE))
+            return
+        _kept, drop = pc.cut_clips(self.clips, a, b)
+        extra = t("dlg_cut_clips", drop) if drop else ""
+        if not messagebox.askyesno(
+                t("dlg_cut_t"),
+                t("dlg_cut_ask", pc.fmt_time(self.duration), pc.fmt_time(span),
+                  pc.fmt_time(gone), extra)):
+            return
+        self._stop_play()
+
+        work = self.work
+        n = self._cut_n = getattr(self, "_cut_n", 0) + 1
+        src, audio = self.video_path, self.audio_path
+        voc, nov, has_v = self.vocals_path, self.backing_path, self.video_has_stream
+
+        def job():
+            self._phase(t("st_cut"), 2, 70)
+            ext = ".mkv" if has_v else (os.path.splitext(src or "")[1] or ".wav")
+            new_src = os.path.join(work, "scene%d%s" % (n, ext))
+            pc.cut_media(src or audio, a, b, new_src, video=has_v,
+                         log=self._log, progress=self._set_progress)
+            self._phase(t("st_audio"), 70, 80)
+            new_audio = os.path.join(work, "audio_cut%d.wav" % n)
+            pc.extract_audio(new_src, new_audio, log=self._log)
+            new_voc = new_nov = None
+            if voc and os.path.isfile(voc):
+                new_voc = os.path.join(work, "vocals_cut%d.wav" % n)
+                pc.cut_media(voc, a, b, new_voc, video=False, log=self._log)
+            if nov and os.path.isfile(nov):
+                new_nov = os.path.join(work, "backing_cut%d.wav" % n)
+                pc.cut_media(nov, a, b, new_nov, video=False, log=self._log)
+            self._phase(t("st_wave"), 80, 98)
+            data, sr = pc.load_mono(new_voc or new_audio)
+            self._cut_result = (new_src, new_audio, new_voc, new_nov, data, sr,
+                                pc.probe_duration(new_audio))
+
+        def done():
+            (new_src, new_audio, new_voc, new_nov,
+             data, sr, dur) = self._cut_result
+            self._cut_result = None
+            clips, dropped = pc.cut_clips(self.clips, a, b)
+            self.video_path, self.audio_path = new_src, new_audio
+            self.vocals_path, self.backing_path = new_voc, new_nov
+            self.wave_data, self.wave_sr = data, sr
+            self.duration = dur if dur > 0 else span
+            self.src_offset = float(self.src_offset or 0.0) + a
+            self.clips = clips
+            self._peak_cache = (None, None)
+            self._preview_cache = {}
+            self._preview_key = None
+            self.playhead = None
+            self.selected = 0 if self.clips else None
+            self.built_path = None
+            self.built_info = None
+            self.dirty = True
+            # Die Dateien sind geschnitten - ein Rueckgaengig, das nur die
+            # Clips zuruecksetzt, waere gelogen. / undo only holds clips and
+            # would lie about the media, so the stack starts over.
+            self._undo.clear()
+            self._redo.clear()
+            self._log(t("log_cut", pc.fmt_time(a), pc.fmt_time(b), dropped))
+            self._refresh_track_box()
+            self._zoom_all()
+            self.refresh_list()
+            self._update_undo_buttons()
+            self._update_built_label()
+            self.draw_wave()
+            self.status.configure(text=t("st_cut_done",
+                                         pc.fmt_time(self.duration)))
+
+        self._bg(job, on_done=done, what=t("dlg_cut_t"))
+
     # ---------------------------------------------------------- Erkennung
     def redetect(self, quiet=False):
         if not len(self.wave_data):
@@ -3145,6 +3261,17 @@ class App(tk.Tk):
                 m.add_command(label=t("btn_split"), command=self._split_selected)
                 m.add_command(label=t("btn_dup"), command=self._duplicate_selected)
                 m.add_command(label=t("btn_delete"), command=self._delete_selected)
+            try:
+                m.tk_popup(event.x_root, event.y_root)
+            finally:
+                m.grab_release()
+        elif kind in ("wave", "ruler") and self.duration > 0:
+            at = max(0.0, min(self.duration, self._x2t(event.x)))
+            m = self._menu(self)
+            m.add_command(label=t("cut_before", pc.fmt_time(at)),
+                          command=lambda: self.cut_scene(at, False))
+            m.add_command(label=t("cut_after", pc.fmt_time(at)),
+                          command=lambda: self.cut_scene(at, True))
             try:
                 m.tk_popup(event.x_root, event.y_root)
             finally:

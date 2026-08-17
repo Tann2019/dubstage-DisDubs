@@ -432,6 +432,58 @@ class FullRun(unittest.TestCase):
             app._stop_play()
             self.assertIsNone(app._play)
 
+            # --- Szene nachtraeglich kuerzen / trim the scene afterwards
+            before_dur = app.duration
+            n_clips = len(app.clips)
+            last = max(c["end"] for c in app.clips)
+            cut_at = last + 0.4                  # hinter dem letzten Clip
+            self.assertLess(cut_at, before_dur - 0.5)
+            self.dlg.answer = True               # ja, schneiden / yes, cut
+            app.cut_scene(cut_at, True)          # alles danach weg
+            end = time.time() + 60
+            while app.busy and time.time() < end:
+                self.pump(0.2)
+            self.dlg.answer = False
+            self.assertFalse(app.busy, "the cut did not finish")
+            self.assertAlmostEqual(app.duration, cut_at, delta=0.3)
+            self.assertLess(app.duration, before_dur - 0.5)
+            self.assertEqual(len(app.clips), n_clips, "clips were lost")
+            self.assertTrue(os.path.isfile(app.video_path))
+            self.assertTrue(os.path.isfile(app.audio_path))
+            self.assertTrue(pc.has_video_stream(app.video_path))
+            self.assertTrue(len(app.wave_data) > 0)
+            self.assertIsNone(app.built_path, "the built pack is stale now")
+
+            # vorne abschneiden: die Clips ruecken mit / cut at the front
+            first = min(c["start"] for c in app.clips)
+            self.assertGreater(first, 0.4)
+            starts = sorted(c["start"] for c in app.clips)
+            self.dlg.answer = True
+            app.cut_scene(first - 0.3, False)
+            end = time.time() + 60
+            while app.busy and time.time() < end:
+                self.pump(0.2)
+            self.dlg.answer = False
+            self.assertFalse(app.busy, "the second cut did not finish")
+            new_starts = sorted(c["start"] for c in app.clips)
+            for old, new in zip(starts, new_starts):
+                self.assertAlmostEqual(new, old - (first - 0.3), delta=0.02)
+            self.assertAlmostEqual(app.src_offset, first - 0.3, delta=0.02)
+
+            # und daraus laesst sich weiter bauen / and it still builds
+            clips = sorted([dict(x) for x in app.clips],
+                           key=lambda x: (x["start"], x["track"]))
+            app._do_build("Cut", clips, [dict(t) for t in app.tracks], BUILD_OPTS)
+            app._build_then = lambda: None
+            app._after_build()
+            cut_pack = app.built_path
+            self.assertTrue(cut_pack and os.path.isdir(cut_pack))
+            self.assertAlmostEqual(
+                pc.probe_duration(os.path.join(cut_pack, "dub_video.mp4")),
+                app.duration, delta=0.4)
+            import dubstage_core as sc2
+            self.assertIsNotNone(sc2.load_pack(cut_pack))
+
             # --- Abbrechen: ein langer ffmpeg-Job wird gekillt und die
             #     Oberflaeche wird wieder frei / cancel kills a long job
             long_out = os.path.join(self.d, "long.wav")

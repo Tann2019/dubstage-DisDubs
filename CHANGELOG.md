@@ -7,6 +7,19 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Set your own end after the fact.** Right-click the waveform and cut off
+  everything before or after that point: the picture and the sound of the
+  session are cut there, the clips move into the new time base, clips that
+  fall outside are dropped and clips across the edge are clamped. So a scene
+  that turned out to run too long does not mean downloading the video again
+  with a different span. The cut is re-encoded rather than copied, because a
+  copy cut snaps to the next keyframe and every clip would sit up to a
+  second off. It asks first, saying how much goes and how many clips go with
+  it; the source file is never touched, but Undo cannot bring the cut back,
+  so the undo stack starts over.
+
 ### Changed
 
 - **Listening to a clip plays a little around it.** Half a second before and

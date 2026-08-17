@@ -52,6 +52,7 @@ The timeline shows the waveform on top and one **track per speaker** below it. D
 | Split | **S**, or the button — splits at the playhead if it sits inside the clip, otherwise in the middle |
 | Duplicate / delete | Ctrl+D / Delete |
 | Undo / redo | Ctrl+Z / Ctrl+Y (also the ↶ ↷ buttons) |
+| Shorten the scene | right-click the waveform: **cut off everything before / after here**. Picture and sound of the session are cut there, the clips move with it, and clips outside are dropped — your own end without downloading again |
 | Zoom | Ctrl + mouse wheel at the cursor, the wheel alone scrolls; Home / End jump |
 | Add a track | **+ Track**, or click the row under the last track |
 | Rename, recolour, reorder, delete a track | right-click the track name |
