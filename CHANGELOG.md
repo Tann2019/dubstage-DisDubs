@@ -7,6 +7,21 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-08-17
+
+### Changed
+
+- **The DisDubs pre-flight check follows the relaxed casting rule.** DisDubs
+  used to accept clip labels as a cast only when there were at most half as
+  many speakers as clips, which is the wrong instrument on a short scene:
+  three characters over five lines is plainly a cast and misses that by one
+  clip, so the pack arrived as one actor with five lines. Over there the
+  rule now judges packs of eight clips or fewer by repetition alone - any
+  label used twice is a cast - and the check here says the same, so the
+  stats line and the warning before building match what DisDubs will
+  actually do. Longer packs keep the ratio; that is where "forty roles for
+  a forty-line scene" lives.
+
 ## [1.4.0] - 2026-08-16
 
 ### Added
@@ -458,7 +473,8 @@ switchable at runtime.
   clip lengths it lands one sample short, which previously raised mid-playback
   and froze the interface.
 
-[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.2.3...v1.3.0

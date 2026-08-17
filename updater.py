@@ -35,7 +35,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 # ------------------------------------------------------------------ Eckdaten
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 REPO = "Tann2019/dubstage-DisDubs"   # dieser Fork / this fork
 
 API_LATEST = "https://api.github.com/repos/%s/releases/latest" % REPO

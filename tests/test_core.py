@@ -128,10 +128,14 @@ class DisDubsCheck(unittest.TestCase):
                 for i, tr in enumerate(tracks_per_clip)]
 
     def test_half_rule(self):
-        tracks = [{"name": "A"}, {"name": "B"}, {"name": "C"}]
-        self.assertEqual(pc.disdubs_parts(tracks, self.clips([0, 1, 2, 0, 1])), 1)
-        self.assertEqual(pc.disdubs_parts(tracks, self.clips([0, 1, 2, 0, 1, 2])), 3)
-        w = pc.disdubs_check(tracks, self.clips([0, 1, 2, 0, 1]))
+        # Ab neun Clips zaehlt wieder das Verhaeltnis: fuenf Sprecher bei
+        # neun Clips sind DisDubs zu viele, bei zehn gehen sie durch.
+        tracks = [{"name": n} for n in "ABCDE"]
+        self.assertEqual(
+            pc.disdubs_parts(tracks, self.clips([0, 1, 2, 3, 4, 0, 1, 2, 3])), 1)
+        self.assertEqual(
+            pc.disdubs_parts(tracks, self.clips([0, 1, 2, 3, 4] * 2)), 5)
+        w = pc.disdubs_check(tracks, self.clips([0, 1, 2, 3, 4, 0, 1, 2, 3]))
         self.assertTrue(any("EINE" in x or "ONE" in x for x in w))
 
     def test_names(self):
@@ -209,6 +213,40 @@ class CutClips(unittest.TestCase):
         self.assertEqual(len(kept), 1)
         kept, dropped = pc.cut_clips([{"start": 1.0, "end": 2.02}], 2.0, 8.0)
         self.assertEqual((kept, dropped), ([], 1))
+
+
+class DisDubsShortPacks(unittest.TestCase):
+    """Kurze Szenen / short scenes, judged the way DisDubs judges them."""
+
+    def clips(self, tracks_per_clip):
+        return [{"start": i * 2.0, "end": i * 2.0 + 1.0, "track": tr}
+                for i, tr in enumerate(tracks_per_clip)]
+
+    def names(self, n):
+        return [{"name": "N%d" % i, "color": "#fff"} for i in range(n)]
+
+    def test_three_speakers_over_five_clips_is_a_cast(self):
+        # Genau der DORE-Pack: fruehet als eine Rolle besetzt, weil die
+        # Haelfte-Regel bei fuenf Clips um einen danebenliegt.
+        clips = self.clips([1, 2, 0, 1, 0])
+        self.assertEqual(pc.disdubs_parts(self.names(3), clips), 3)
+        warns = pc.disdubs_check(self.names(3), clips, duration=12.0,
+                                 has_backing=True, has_video=True)
+        self.assertFalse([w for w in warns if "EINE" in w or "ONE" in w])
+
+    def test_a_short_pack_without_repetition_is_one_part(self):
+        clips = self.clips([0, 1, 2, 3, 4])
+        self.assertEqual(pc.disdubs_parts(self.names(5), clips), 1)
+
+    def test_a_long_pack_keeps_the_half_rule(self):
+        many = self.clips([0, 1, 2, 3, 4, 5, 6, 7, 8, 0])
+        self.assertEqual(pc.disdubs_parts(self.names(9), many), 1)
+        cast = self.clips([0, 1, 2, 3, 4, 0, 1, 2, 3, 4])
+        self.assertEqual(pc.disdubs_parts(self.names(5), cast), 5)
+
+    def test_more_than_ten_names_is_never_a_cast(self):
+        clips = self.clips(list(range(11)) + list(range(11)))
+        self.assertEqual(pc.disdubs_parts(self.names(11), clips), 1)
 
 
 class I18n(unittest.TestCase):

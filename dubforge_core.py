@@ -1619,6 +1619,7 @@ def sweep_temp(prefix="dubforge_", max_age_h=24):
 
 DISDUBS_MAX_NAME = 40          # speakersFrom: laengere Labels -> keine Namen
 DISDUBS_MAX_SPEAKERS = 10
+DISDUBS_SHORT_PACK = 8         # bis hierhin zaehlt nur, dass sich etwas wiederholt
 DISDUBS_FREE_SECONDS = 180
 DISDUBS_TRAILING_S = 1.0       # so kurze Ueberschneidungen kuerzt DisDubs
 
@@ -1658,8 +1659,7 @@ def disdubs_check(tracks, clips, duration=0.0, dub=True, has_backing=True,
 
     used_tracks = sorted({int(c.get("track", 0)) for c in clips})
     n_speakers = len(used_tracks)
-    if n_speakers > 1 and (n_speakers * 2 > len(clips)
-                           or n_speakers > DISDUBS_MAX_SPEAKERS):
+    if n_speakers > 1 and disdubs_parts(tracks, clips) == 1:
         warns.append(M("dd_one_part", n_speakers, len(clips)))
 
     if dub:
@@ -1687,12 +1687,25 @@ def disdubs_check(tracks, clips, duration=0.0, dub=True, has_backing=True,
 
 
 def disdubs_parts(tracks, clips):
-    """Wie viele Rollen DisDubs daraus machen wuerde / how many parts."""
+    """Wie viele Rollen DisDubs daraus machen wuerde / how many parts.
+
+    Dieselbe Regel wie speakersFrom() drueben: mehr als zehn Namen sind
+    kein Ensemble mehr, ein kurzer Pack muss nur irgendetwas wiederholen,
+    und erst ab da zaehlt "hoechstens halb so viele Sprecher wie Clips".
+
+    The same rule as speakersFrom() over there: more than ten names is no
+    longer a cast, a short pack only has to repeat something, and only
+    beyond that does "at most half as many speakers as clips" apply.
+    """
     if not clips:
         return 0
     used = sorted({int(c.get("track", 0)) for c in clips})
     n = len(used)
-    if n * 2 > len(clips) or n > DISDUBS_MAX_SPEAKERS:
+    if n > DISDUBS_MAX_SPEAKERS:
+        return 1
+    if len(clips) <= DISDUBS_SHORT_PACK:
+        return n if n < len(clips) else 1
+    if n * 2 > len(clips):
         return 1
     return n
 
