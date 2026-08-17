@@ -7,6 +7,34 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-08-16
+
+### Fixed
+
+- **The in-app update never arrived and left a console window standing
+  around.** The swap script waits for the app to close, and it asked
+  whether the app was gone with `tasklist ... | find "<pid>"`. The script
+  runs with no console of its own, and in a process without a console that
+  pipe never returns: `find` sits there for ever, so the wait loop never
+  ended, the files were never copied and the window stayed on screen until
+  it was closed by hand. The check now writes `tasklist` to a file and
+  reads it back with `findstr` - no pipe - and the script is started with
+  `CREATE_NO_WINDOW` instead of `DETACHED_PROCESS`, which gives it a real
+  but invisible console, so the console tools behave normally. Nothing was
+  ever half-copied: the old script hung before it touched a single file.
+- **The restart after an update no longer opens a console.** It went
+  through `Start DubForge.bat`, and a batch file always needs a window; it
+  now starts `pythonw.exe` with the app directly and only falls back to the
+  starter if there is no interpreter. The script also switches into the
+  app's folder before starting it, and cleans up its own scratch file.
+
+### Added
+
+- **Tests for the updater** (`tests/test_updater.py`), including one that
+  really runs a swap in a sandbox against a short-lived stand-in app and
+  fails if the script hangs, and one that fails if a pipe ever reappears in
+  the wait loop.
+
 ## [1.3.0] - 2026-08-16
 
 ### Added
@@ -415,7 +443,8 @@ switchable at runtime.
   clip lengths it lands one sample short, which previously raised mid-playback
   and froze the interface.
 
-[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.2.3...v1.3.0
 [1.2.3]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.2.1...v1.2.2

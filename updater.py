@@ -35,7 +35,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 # ------------------------------------------------------------------ Eckdaten
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 REPO = "Tann2019/dubstage-DisDubs"   # dieser Fork / this fork
 
 API_LATEST = "https://api.github.com/repos/%s/releases/latest" % REPO
@@ -260,10 +260,16 @@ echo Quelle : %SRC% >> "%LOG%"
 echo Ziel   : %DST% >> "%LOG%"
 
 rem Warten, bis die App wirklich beendet ist (hoechstens 60 Sekunden).
-rem ping statt timeout, weil timeout ohne Konsole aussteigt.
+rem ping statt timeout, weil timeout ohne Konsole aussteigt. Und tasklist
+rem schreibt in eine Datei statt in eine Pipe: in einem Prozess ohne
+rem Konsole bleibt "| find" haengen, dann wartet das Skript ewig und das
+rem Update passiert nie.  /  tasklist writes to a file instead of a pipe:
+rem in a process without a console "| find" hangs forever, and then the
+rem update never happens.
 set /a N=0
 :wait
-tasklist /fi "PID eq __PID__" 2>nul | find "__PID__" >nul
+tasklist /fi "PID eq __PID__" > "__DUMP__" 2>nul
+findstr /c:"__PID__" "__DUMP__" >nul
 if errorlevel 1 goto :sichern
 set /a N+=1
 if %N% GEQ 60 goto :laeuftnoch
@@ -291,30 +297,53 @@ xcopy "%BAK%\*" "%DST%\" /y /q /i >> "%LOG%" 2>&1
 echo Alter Stand wiederhergestellt. >> "%LOG%"
 
 :starten
+cd /d "%DST%"
 start "" __RESTART__
 
 :ende
+del "__DUMP__" >nul 2>&1
 endlocal
 """
 
 
+def _pythonw():
+    """pythonw.exe neben dem laufenden Interpreter - der oeffnet beim
+    Starten kein Fenster. / the interpreter that opens no window."""
+    exe = sys.executable or ""
+    if not exe:
+        return ""
+    if os.path.basename(exe).lower().startswith("pythonw"):
+        return exe
+    near = os.path.join(os.path.dirname(exe), "pythonw.exe")
+    return near if os.path.isfile(near) else exe
+
+
 def _restart_command(app_dir, which):
-    """Wie die App nach dem Tausch wieder gestartet wird."""
+    """Wie die App nach dem Tausch wieder gestartet wird.
+
+    Zuerst der Interpreter ohne Konsole: ueber die Start-BAT ginge ein
+    Konsolenfenster auf, das der Nutzer dann vor sich hat.
+    The interpreter first: going through the starter BAT would open a
+    console window that then sits in front of the user.
+    """
+    script = os.path.join(app_dir, "%s.pyw" % which)
+    exe = _pythonw()
+    if exe and os.path.isfile(script):
+        return '"%s" "%s"' % (exe, script)
     starter = os.path.join(app_dir, "Start %s.bat" % which)
     if os.path.isfile(starter):
         return '"%s"' % starter
-    script = os.path.join(app_dir, "%s.pyw" % which)
-    exe = sys.executable or "pythonw.exe"
-    return '"%s" "%s"' % (exe, script)
+    return '"%s" "%s"' % (exe or "pythonw.exe", script)
 
 
-def swap_text(staged_root, app_dir, bak, log, which, tag, pid):
+def swap_text(staged_root, app_dir, bak, log, which, tag, pid, dump=None):
     """Inhalt des Tauschskripts - getrennt, damit es pruefbar bleibt."""
     return (SWAP
             .replace("__SRC__", staged_root.rstrip("\\/"))
             .replace("__DST__", app_dir.rstrip("\\/"))
             .replace("__BAK__", bak)
             .replace("__LOG__", log)
+            .replace("__DUMP__", dump or (log + ".task"))
             .replace("__TAG__", tag or "?")
             .replace("__PID__", str(pid))
             .replace("__RESTART__", _restart_command(app_dir, which)))
@@ -356,13 +385,22 @@ def apply(staged_root, app_dir, which="DubForge", tag=""):
     log = os.path.join(tmp, "dubstage_update_%s.log" % stamp)
     bat = os.path.join(tmp, "dubstage_update_%s.bat" % stamp)
 
-    text = swap_text(staged_root, app_dir, bak, log, which, tag, os.getpid())
+    dump = os.path.join(tmp, "dubstage_update_%s.task" % stamp)
+    text = swap_text(staged_root, app_dir, bak, log, which, tag, os.getpid(),
+                     dump=dump)
 
     with io.open(bat, "w", encoding="cp1252", errors="replace",
                  newline="\r\n") as f:
         f.write(text)
 
-    flags = 0x00000008 | 0x00000200          # DETACHED | NEW_PROCESS_GROUP
+    # CREATE_NO_WINDOW statt DETACHED_PROCESS: das Skript bekommt eine
+    # Konsole, sie ist nur unsichtbar. Ohne Konsole verhalten sich
+    # tasklist, findstr und ping unberechenbar - abgekoppelt blieb der
+    # Tausch haengen und ein Fenster stand danach herum.
+    # CREATE_NO_WINDOW rather than DETACHED_PROCESS: the script gets a
+    # console, it is simply invisible. Without one the console tools
+    # behave unpredictably - detached, the swap hung and left a window.
+    flags = 0x08000000 | 0x00000200       # NO_WINDOW | NEW_PROCESS_GROUP
     subprocess.Popen([os.environ.get("COMSPEC", "cmd.exe"), "/c", bat],
                      cwd=tmp, close_fds=True, creationflags=flags)
     return log
