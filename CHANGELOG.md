@@ -7,6 +7,22 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Merged upstream 1.2.0 and 1.2.1 (xmrius/dubstage).** What came over is the
+  robustness work: the whole styling block now shrugs off colour options an
+  older Tk does not know, so a rejected line falls back to the default instead
+  of stopping the program from starting. Hover states that `configure()` cannot
+  reach are set through `map()` as well - column headers, check boxes and radio
+  dots, the slider handle, the spinbox and read-only entry fields no longer turn
+  white and swallow their own text. Closing is treated as optional work
+  throughout, so a failure on the way out can no longer leave the process alive
+  and the update doing nothing.
+- Upstream's second export format, **The Choicer Voicer**, was deliberately not
+  taken. It hangs a character on every single clip, which is the same thing this
+  fork already says with speaker tracks, and it targets a different game
+  entirely. DubForge here stays single-format and aimed at DisDubs.
+
 ## [1.4.1] - 2026-08-17
 
 ### Changed

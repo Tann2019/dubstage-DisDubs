@@ -634,6 +634,7 @@ class App(tk.Tk):
         self.upd_busy = False
         self.upd_dismissed = False
 
+
         self.view_a = 0.0
         self.view_b = 1.0
         self._drag = None
@@ -698,94 +699,158 @@ class App(tk.Tk):
             s.theme_use("clam")
         except Exception:
             pass
-        s.configure(".", background=BG, foreground=FG, fieldbackground=BG2,
-                    bordercolor=LINE, lightcolor=BG2, darkcolor=BG2,
-                    font=(FONT, 10))
-        s.configure("TFrame", background=BG)
-        s.configure("Card.TFrame", background=BG2)
-        s.configure("TLabel", background=BG, foreground=FG)
-        s.configure("Card.TLabel", background=BG2, foreground=FG)
-        s.configure("Head.TLabel", background=BG, foreground=ACC2,
-                    font=(FONT + " Semibold", 13))
-        s.configure("Tag.TLabel", background=BG, foreground=DIM,
-                    font=(FONT, 10))
-        s.configure("Dim.TLabel", background=BG, foreground=DIM)
-        s.configure("Insp.TLabel", background=BG, foreground=FG,
-                    font=(FONT + " Semibold", 10))
-        s.configure("Warn.TLabel", background="#3a2f1e", foreground=WARN,
-                    padding=(10, 5), font=(FONT + " Semibold", 10))
-        s.configure("TButton", background="#3a3d4d", foreground=FG, padding=6,
-                    borderwidth=0, focuscolor=BG)
-        s.map("TButton", background=[("active", "#4a4e63"),
-                                     ("disabled", "#2c2e3a")],
-              foreground=[("disabled", "#6c718a")])
-        s.configure("Small.TButton", padding=(6, 3))
-        s.configure("Accent.TButton", background=ACC, foreground="#ffffff",
-                    padding=8, font=(FONT + " Semibold", 10))
-        s.map("Accent.TButton", background=[("active", "#9078ff"),
-                                            ("disabled", "#463a7a")])
-        s.configure("Go.TButton", background=ACC2, foreground="#0d2b20",
-                    padding=8, font=(FONT + " Semibold", 10))
-        s.map("Go.TButton", background=[("active", "#5ee7ae"),
-                                        ("disabled", "#2b5c48")])
-        s.configure("TMenubutton", background="#3a3d4d", foreground=FG,
-                    padding=6, borderwidth=0, arrowcolor=FG)
-        s.map("TMenubutton", background=[("active", "#4a4e63")])
-        s.configure("TEntry", fieldbackground=BG2, foreground=FG,
-                    insertcolor=FG, padding=4)
-        s.configure("TSpinbox", fieldbackground=BG2, foreground=FG,
-                    insertcolor=FG, arrowcolor=FG, padding=3)
-        s.map("TSpinbox", fieldbackground=[("readonly", BG2)])
-        s.configure("TCombobox", fieldbackground=BG2, background=BG2,
-                    foreground=FG, arrowcolor=FG, bordercolor=LINE,
-                    lightcolor=BG2, darkcolor=BG2, padding=4,
-                    selectbackground=BG2, selectforeground=FG)
-        s.map("TCombobox",
-              fieldbackground=[("readonly", BG2), ("disabled", BG)],
-              background=[("readonly", BG2), ("active", BG2)],
-              foreground=[("readonly", FG), ("disabled", "#7a7f96")],
-              selectbackground=[("readonly", BG2), ("focus", BG2)],
-              selectforeground=[("readonly", FG), ("focus", FG)],
-              arrowcolor=[("readonly", FG), ("disabled", "#7a7f96")])
+
+        # Nicht jede Tk-Fassung kennt jede Farboption. Ein unbekannter Name
+        # wuerde sonst beim Start eine Ausnahme werfen - fuer reine Optik ist
+        # das zu teuer. Schlaegt eine Zeile fehl, bleibt es bei der Vorgabe.
+        # Not every Tk build knows every colour option. An unknown name would
+        # raise on startup - too steep a price for looks alone. If a line
+        # fails, that style simply keeps its default.
+        def cfg(style, **kw):
+            try:
+                s.configure(style, **kw)
+            except Exception:
+                pass
+
+        def mp(style, **kw):
+            try:
+                s.map(style, **kw)
+            except Exception:
+                pass
+
+        cfg(".", background=BG, foreground=FG, fieldbackground=BG2,
+            bordercolor=LINE, lightcolor=BG2, darkcolor=BG2,
+            font=(FONT, 10))
+        cfg("TFrame", background=BG)
+        cfg("Card.TFrame", background=BG2)
+        cfg("TLabel", background=BG, foreground=FG)
+        cfg("Card.TLabel", background=BG2, foreground=FG)
+        cfg("Head.TLabel", background=BG, foreground=ACC2,
+            font=(FONT + " Semibold", 13))
+        cfg("Tag.TLabel", background=BG, foreground=DIM,
+            font=(FONT, 10))
+        cfg("Dim.TLabel", background=BG, foreground=DIM)
+        cfg("Insp.TLabel", background=BG, foreground=FG,
+            font=(FONT + " Semibold", 10))
+        cfg("Warn.TLabel", background="#3a2f1e", foreground=WARN,
+            padding=(10, 5), font=(FONT + " Semibold", 10))
+        cfg("TButton", background="#3a3d4d", foreground=FG, padding=6,
+            borderwidth=0, focuscolor=BG)
+        mp("TButton", background=[("active", "#4a4e63"),
+                                  ("disabled", "#2c2e3a")],
+           foreground=[("disabled", "#6c718a")])
+        cfg("Small.TButton", padding=(6, 3))
+        cfg("Accent.TButton", background=ACC, foreground="#ffffff",
+            padding=8, font=(FONT + " Semibold", 10))
+        mp("Accent.TButton", background=[("active", "#9078ff"),
+                                         ("disabled", "#463a7a")])
+        cfg("Go.TButton", background=ACC2, foreground="#0d2b20",
+            padding=8, font=(FONT + " Semibold", 10))
+        mp("Go.TButton", background=[("active", "#5ee7ae"),
+                                     ("disabled", "#2b5c48")])
+        cfg("TMenubutton", background="#3a3d4d", foreground=FG,
+            padding=6, borderwidth=0, arrowcolor=FG)
+        mp("TMenubutton", background=[("active", "#4a4e63")])
+        cfg("TEntry", fieldbackground=BG2, foreground=FG,
+            insertcolor=FG, padding=4)
+        # "readonly" und "disabled" haben eigene Farben, die configure()
+        # nicht erreicht - sonst wird das Feld hell und der Text unsichtbar.
+        # "readonly" and "disabled" carry their own colours configure() never
+        # reaches - the field would turn light and swallow its own text.
+        mp("TEntry",
+           fieldbackground=[("readonly", BG2), ("disabled", BG)],
+           foreground=[("readonly", DIM), ("disabled", "#7a7f96")],
+           bordercolor=[("focus", ACC)])
+        # Comboboxen: der Zustand "readonly" hat eigene Farben, die
+        # configure() nicht erreicht - deshalb zusaetzlich map().
+        # Comboboxes: the "readonly" state has its own colours that
+        # configure() never reaches - hence the extra map().
+        cfg("TCombobox", fieldbackground=BG2, background=BG2,
+            foreground=FG, arrowcolor=FG, bordercolor=LINE,
+            lightcolor=BG2, darkcolor=BG2, padding=4,
+            selectbackground=BG2, selectforeground=FG)
+        mp("TCombobox",
+           fieldbackground=[("readonly", BG2), ("disabled", BG)],
+           background=[("readonly", BG2), ("active", BG2)],
+           foreground=[("readonly", FG), ("disabled", "#7a7f96")],
+           selectbackground=[("readonly", BG2), ("focus", BG2)],
+           selectforeground=[("readonly", FG), ("focus", FG)],
+           arrowcolor=[("readonly", FG), ("disabled", "#7a7f96")])
         self.option_add("*TCombobox*Listbox.background", BG2)
         self.option_add("*TCombobox*Listbox.foreground", FG)
         self.option_add("*TCombobox*Listbox.selectBackground", ACC)
         self.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
         self.option_add("*TCombobox*Listbox.borderWidth", 0)
-        s.configure("TCheckbutton", background=BG, foreground=FG)
-        s.configure("TRadiobutton", background=BG, foreground=FG)
-        s.configure("Treeview", background=BG2, fieldbackground=BG2,
-                    foreground=FG, rowheight=24, borderwidth=0)
-        s.configure("Treeview.Heading", background="#343747", foreground=FG,
-                    font=(FONT + " Semibold", 9))
+        # Kaestchen und Punkte: clam faerbt sie beim Ueberfahren hell ein,
+        # dann steht dunkler Text auf weissem Grund. Alle Zustaende setzen.
+        # Check boxes and radio dots: clam lightens them on hover, leaving
+        # dark text on white. Spell out every state.
+        for kind in ("TCheckbutton", "TRadiobutton"):
+            cfg(kind, background=BG, foreground=FG,
+                indicatorbackground=BG2, indicatorforeground=FG,
+                focuscolor=BG, padding=2)
+            mp(kind,
+               background=[("active", BG), ("pressed", BG)],
+               foreground=[("disabled", "#7a7f96"), ("active", FG)],
+               indicatorbackground=[("selected", ACC), ("pressed", ACC),
+                                    ("active", "#3a3d4d"),
+                                    ("disabled", BG2)],
+               indicatorforeground=[("selected", "#ffffff"),
+                                    ("disabled", "#7a7f96")])
+        cfg("Treeview", background=BG2, fieldbackground=BG2,
+            foreground=FG, rowheight=24, borderwidth=0)
+        cfg("Treeview.Heading", background="#343747", foreground=FG,
+            relief="flat", font=(FONT + " Semibold", 9))
+        # Spaltenkopf wird beim Ueberfahren sonst weiss.
+        # Otherwise the column heading turns white on hover.
+        mp("Treeview.Heading",
+           background=[("active", "#404560"), ("pressed", "#4a5070")],
+           foreground=[("active", FG), ("pressed", FG)],
+           relief=[("active", "flat"), ("pressed", "flat")])
         # Neutrale Auswahlfarbe, damit die Sprecherfarben lesbar bleiben.
         # Neutral selection so the per-speaker text colours stay readable.
-        s.map("Treeview", background=[("selected", SEL_ROW)],
-              foreground=[("selected", FG)])
-        s.configure("TProgressbar", background=ACC2, troughcolor=BG2,
-                    borderwidth=0)
-        s.configure("Ban.TFrame", background=BAN)
-        s.configure("Ban.TLabel", background=BAN, foreground=FG)
-        s.configure("BanHead.TLabel", background=BAN, foreground="#ffffff",
-                    font=(FONT + " Semibold", 11))
-        s.configure("BanDim.TLabel", background=BAN, foreground="#b6b1dc")
-        s.configure("Ban.TButton", background="#4b4590", foreground=FG,
-                    padding=6, borderwidth=0)
-        s.map("Ban.TButton", background=[("active", "#5d56ad")])
-        s.configure("Vertical.TScrollbar", background="#3a3d4d",
-                    troughcolor=BG2, bordercolor=BG2, arrowcolor=FG,
-                    darkcolor=BG2, lightcolor=BG2, borderwidth=0)
-        s.map("Vertical.TScrollbar", background=[("active", "#4a4e63")])
-        s.configure("Horizontal.TScrollbar", background="#3a3d4d",
-                    troughcolor=BG2, bordercolor=BG2, arrowcolor=FG,
-                    darkcolor=BG2, lightcolor=BG2, borderwidth=0)
-        s.map("Horizontal.TScrollbar", background=[("active", "#4a4e63")])
-        s.configure("TLabelframe", background=BG, foreground=ACC2)
-        s.configure("TLabelframe.Label", background=BG, foreground=ACC2,
-                    font=(FONT + " Semibold", 10))
-        s.configure("TScale", background=BG, troughcolor=BG2)
-        s.configure("TSeparator", background=LINE)
-        s.configure("TPanedwindow", background=BG)
+        mp("Treeview", background=[("selected", SEL_ROW)],
+           foreground=[("selected", FG)])
+        cfg("TProgressbar", background=ACC2, troughcolor=BG2,
+            borderwidth=0)
+        cfg("Ban.TFrame", background=BAN)
+        cfg("Ban.TLabel", background=BAN, foreground=FG)
+        cfg("BanHead.TLabel", background=BAN, foreground="#ffffff",
+            font=(FONT + " Semibold", 11))
+        cfg("BanDim.TLabel", background=BAN, foreground="#b6b1dc")
+        cfg("Ban.TButton", background="#4b4590", foreground=FG,
+            padding=6, borderwidth=0)
+        mp("Ban.TButton", background=[("active", "#5d56ad")])
+        cfg("Vertical.TScrollbar", background="#3a3d4d",
+            troughcolor=BG2, bordercolor=BG2, arrowcolor=FG,
+            darkcolor=BG2, lightcolor=BG2, borderwidth=0)
+        mp("Vertical.TScrollbar", background=[("active", "#4a4e63")])
+        cfg("Horizontal.TScrollbar", background="#3a3d4d",
+            troughcolor=BG2, bordercolor=BG2, arrowcolor=FG,
+            darkcolor=BG2, lightcolor=BG2, borderwidth=0)
+        mp("Horizontal.TScrollbar", background=[("active", "#4a4e63")])
+        cfg("TLabelframe", background=BG, foreground=ACC2)
+        cfg("TLabelframe.Label", background=BG, foreground=ACC2,
+            font=(FONT + " Semibold", 10))
+        # Schieberegler: der Griff kommt aus "background", der beim
+        # Ueberfahren ebenfalls hell werden wuerde.
+        # The slider handle is drawn from "background", which would go
+        # light on hover as well.
+        cfg("TScale", background="#4a4e63", troughcolor=BG2,
+            bordercolor=LINE, lightcolor="#4a4e63", darkcolor="#4a4e63")
+        mp("TScale",
+           background=[("active", ACC), ("pressed", ACC)],
+           lightcolor=[("active", ACC)], darkcolor=[("active", ACC)])
+        cfg("TSpinbox", fieldbackground=BG2, background=BG2,
+            foreground=FG, arrowcolor=FG, bordercolor=LINE,
+            lightcolor=BG2, darkcolor=BG2, insertcolor=FG, padding=3)
+        mp("TSpinbox",
+           fieldbackground=[("readonly", BG2), ("disabled", BG)],
+           background=[("active", BG2), ("readonly", BG2)],
+           foreground=[("disabled", "#7a7f96")],
+           arrowcolor=[("active", ACC2), ("disabled", "#7a7f96")])
+        cfg("TSeparator", background=LINE)
+        cfg("TPanedwindow", background=BG)
 
     def _menu(self, parent):
         return tk.Menu(parent, tearoff=0, bg=BG2, fg=FG, activebackground=ACC,
@@ -1291,10 +1356,14 @@ class App(tk.Tk):
         code = "en" if self.lang_var.get().startswith("English") else "de"
         if code == LANG:
             return
-        keep = self.log.get("1.0", "end-1c")
         set_lang(code)
         self.cfg["lang"] = code
         save_cfg(self.cfg)
+        self._rebuild_ui()
+
+    def _rebuild_ui(self):
+        """Oberflaeche neu aufbauen, Protokoll und Auswahl behalten."""
+        keep = self.log.get("1.0", "end-1c")
         self.ui_root.destroy()
         self._build_ui()
         if keep.strip():
@@ -3771,15 +3840,22 @@ class App(tk.Tk):
         elif self.clips and self.dirty:
             if not messagebox.askyesno(t("dlg_unsaved_t"), t("dlg_unsaved")):
                 return
-        self._save_cfg()
-        self._stop_play()
-        pc.cancel()
-        shutil.rmtree(self.work, ignore_errors=True)
-        try:
+
+        # Aufraeumen darf das Beenden nicht verhindern: beim Update wartet
+        # ein Skript darauf, dass dieser Prozess wirklich verschwindet.
+        # Cleanup must never block the exit: during an update a script is
+        # waiting for this process to actually go away.
+        def close_log():
             if self._logfile:
                 self._logfile.close()
-        except Exception:
-            pass
+
+        for step in (self._save_cfg, self._stop_play, pc.cancel,
+                     lambda: shutil.rmtree(self.work, ignore_errors=True),
+                     close_log):
+            try:
+                step()
+            except Exception:
+                pass
         self.destroy()
 
     # ---- Von/Bis leeren, wenn ein anderer Link kommt / clear span on new URL

@@ -185,6 +185,9 @@ _MSG = {
     "no_pack": (
         "Kein Dub-Pack: %s\n(dub_video.* fehlt oder keine Clips mit Zeitstempel)",
         "Not a dub pack: %s\n(no dub_video.* or no clips carrying a timestamp)"),
+    "no_frame": (
+        "Konnte kein Einzelbild bei %s s aus dem Video holen.",
+        "Could not grab a still frame at %s s from the video."),
     "dl_section_fail": (
         "Der Ausschnitt-Download ging nicht. Das passiert, wenn ffmpeg die\n"
         "Videodaten selbst holen soll und dabei abgewiesen wird. Ich lade\n"
@@ -1073,6 +1076,20 @@ def convert_video(video, out_path, max_height=720, quality=20, log=None,
         + args + ["-map", "0:v:0", "-map", "0:a:0?", out_path], log=log,
         progress=progress, total=total)
     return out_path
+
+
+def grab_frame(video, seconds, out_png, max_height=480, log=None):
+    """
+    Ein Einzelbild aus dem Video holen.
+    Grab a single still frame out of the video.
+    """
+    scale = "scale=-2:'min(%d,ih)'" % int(max_height)
+    run([ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
+         "-ss", "%.3f" % max(0.0, float(seconds)), "-i", video,
+         "-frames:v", "1", "-vf", scale, out_png], log=log)
+    if not os.path.isfile(out_png):
+        raise RuntimeError(M("no_frame", "%.3f" % float(seconds)))
+    return out_png
 
 
 # --------------------------------------------------------------------------
