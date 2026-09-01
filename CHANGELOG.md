@@ -7,7 +7,9 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed
+## [1.4.2] - 2026-08-31
+
+### Fixed
 
 - **Merged upstream 1.2.0 and 1.2.1 (xmrius/dubstage).** What came over is the
   robustness work: the whole styling block now shrugs off colour options an
@@ -18,6 +20,9 @@ versioning follows [Semantic Versioning](https://semver.org/).
   white and swallow their own text. Closing is treated as optional work
   throughout, so a failure on the way out can no longer leave the process alive
   and the update doing nothing.
+
+### Changed
+
 - Upstream's second export format, **The Choicer Voicer**, was deliberately not
   taken. It hangs a character on every single clip, which is the same thing this
   fork already says with speaker tracks, and it targets a different game
@@ -489,7 +494,8 @@ switchable at runtime.
   clip lengths it lands one sample short, which previously raised mid-playback
   and froze the interface.
 
-[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.3.0...v1.3.1
