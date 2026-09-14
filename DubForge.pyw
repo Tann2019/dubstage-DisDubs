@@ -25,6 +25,7 @@ from tkinter import ttk, filedialog, messagebox, simpledialog
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dubforge_core as pc
 import updater as upd
+import transcription as tr
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(APP_DIR, "packs")
@@ -58,6 +59,20 @@ def set_lang(code):
 
 # (deutsch, english)
 T = {
+    "asr_language": ("Gesprochene Sprache (Code):", "Spoken language (code):"),
+    "asr_model": ("Modell:", "Model:"),
+    "asr_device": ("Geraet:", "Device:"),
+    "asr_generate": ("Untertitel generieren", "Generate captions"),
+    "asr_replace": ("Vorhandene ersetzen", "Replace existing"),
+    "asr_hint": ("fr = Franzoesisch, en = Englisch, de = Deutsch. Erstmalig Modell-Download; Audio bleibt lokal.\n"
+                 "SRT/VTT enthalten das gesamte Transkript. Clip-Korrekturen aendern nur den Text in DubStage.",
+                 "fr = French, en = English, de = German. First use downloads the model; audio stays local.\n"
+                 "SRT/VTT contain the full transcript. Clip corrections only change the text in DubStage."),
+    "asr_language_required": ("Bitte Sprachcode eingeben, z.B. fr fuer Franzoesisch.",
+                              "Enter a spoken language code, e.g. fr for French."),
+    "asr_empty": ("Keine Sprache zugeordnet: %s", "No recognized speech mapped to: %s"),
+    "asr_error": ("Spracherkennung fehlgeschlagen. Vorhandene Untertitel bleiben erhalten.\n%s",
+                  "Speech recognition failed. Existing captions are preserved.\n%s"),
     "title":        ("DubForge  -  Dub-Packs aus Videos bauen",
                      "DubForge  -  build dub packs from video"),
     "lang_label":   ("Sprache:", "Language:"),
@@ -366,6 +381,8 @@ class App(tk.Tk):
         self.duration = 0.0
         # [{'start':float,'end':float,'name':str,'caption':str}]
         self.clips = []
+        self.transcript = None
+        self._busy_widgets = []
         self.selected = None
         self._caption_for = None
         self._ytdlp_age = None
@@ -415,6 +432,10 @@ class App(tk.Tk):
         self.vheight = tk.StringVar(value=c.get("vheight", "720"))
         self.target_dir = tk.StringVar(value=c.get("target_dir", ""))
         self.caption_var = tk.StringVar(value="")
+        self.asr_language = tk.StringVar(value=c.get("asr_language", ""))
+        self.asr_model = tk.StringVar(value=c.get("asr_model", "large-v3"))
+        self.asr_device = tk.StringVar(value=c.get("asr_device", "cpu"))
+        self.asr_replace = tk.BooleanVar(value=False)
         self.fmt = tk.StringVar(value=c.get("fmt", "dubstage"))
         self.char_var = tk.StringVar(value="")
         self.pack_title = tk.StringVar(value=c.get("pack_title", ""))
@@ -728,6 +749,22 @@ class App(tk.Tk):
                     textvariable=self.maxlen, width=8).pack()
         ttk.Button(side, text=t("redetect"), width=16,
                    command=self.redetect).pack(pady=(8, 0))
+
+        asr = ttk.Frame(step2)
+        asr.pack(fill="x", pady=(8, 0))
+        ttk.Label(asr, text=t("asr_language")).pack(side="left")
+        ttk.Combobox(asr, textvariable=self.asr_language, values=tr.LANGUAGES,
+                     width=5).pack(side="left", padx=4)
+        ttk.Label(asr, text=t("asr_model")).pack(side="left")
+        ttk.Combobox(asr, textvariable=self.asr_model, values=tr.MODELS,
+                     state="readonly", width=10).pack(side="left", padx=4)
+        ttk.Label(asr, text=t("asr_device")).pack(side="left")
+        ttk.Combobox(asr, textvariable=self.asr_device, values=("cpu", "cuda"),
+                     state="readonly", width=5).pack(side="left", padx=4)
+        ttk.Checkbutton(asr, text=t("asr_replace"), variable=self.asr_replace).pack(side="left")
+        self.transcribe_btn = ttk.Button(asr, text=t("asr_generate"), command=self.start_transcribe)
+        self.transcribe_btn.pack(side="left", padx=6)
+        ttk.Label(step2, text=t("asr_hint"), style="Dim.TLabel").pack(anchor="w", pady=4)
 
         cap = ttk.Frame(step2)
         cap.pack(fill="x", pady=(8, 0))
@@ -1194,9 +1231,22 @@ class App(tk.Tk):
 
     def _set_busy(self, flag):
         self.busy = flag
-        state = "disabled" if flag else "normal"
-        for b in (self.analyze_btn, self.build_btn, self.install_btn):
-            b.configure(state=state)
+        if flag:
+            self._drag = None
+            def disable(widget):
+                if isinstance(widget, (ttk.Button, ttk.Entry, ttk.Checkbutton,
+                                       ttk.Radiobutton, ttk.Scale, ttk.Treeview)):
+                    if not widget.instate(["disabled"]):
+                        self._busy_widgets.append(widget)
+                        widget.state(["disabled"])
+                for child in widget.winfo_children():
+                    disable(child)
+            disable(self.ui_root)
+        else:
+            for widget in self._busy_widgets:
+                if widget.winfo_exists():
+                    widget.state(["!disabled"])
+            self._busy_widgets = []
         if not flag:
             self.prog.configure(value=0)
 
@@ -1216,7 +1266,53 @@ class App(tk.Tk):
         threading.Thread(target=wrapper, daemon=True).start()
 
     # ------------------------------------------------------------ ANALYSE
+    def start_transcribe(self):
+        if self.busy:
+            return
+        if not self.audio_path or not self.clips:
+            messagebox.showinfo(t("dlg_first_t"), t("dlg_first"))
+            return
+        language = self.asr_language.get().strip().lower()
+        if not language:
+            messagebox.showinfo(t("title"), t("asr_language_required"))
+            return
+        self._caption_save()
+        self._save_cfg()
+        media, model, device = self.audio_path, self.asr_model.get(), self.asr_device.get()
+        clips = [dict(c) for c in self.clips]
+        overwrite = self.asr_replace.get()
+        result = {}
+
+        def progress(message, percent):
+            self._log(message)
+            self._set_status(message, percent)
+
+        def work():
+            try:
+                transcript = tr.transcribe(media, language, model, device, progress)
+                captions = tr.map_captions(transcript, clips)
+                tr.apply_captions(clips, captions, overwrite=overwrite)
+                result.update(transcript=transcript, clips=clips, captions=captions)
+            except Exception as exc:
+                raise RuntimeError(t("asr_error", exc)) from exc
+
+        def done():
+            self.transcript = result["transcript"]
+            self.clips = result["clips"]
+            self.refresh_list()
+            empty = [c["name"] for c, text in zip(self.clips, result["captions"]) if not text]
+            if empty:
+                self._log(t("asr_empty", ", ".join(empty)))
+
+        self._bg(work, on_done=done)
+
+    def _remap_captions(self):
+        if self.transcript is not None:
+            tr.apply_captions(self.clips, tr.map_captions(self.transcript, self.clips), remap=True)
+
     def start_analyze(self):
+        if self.busy:
+            return
         src = self.url_var.get().strip()
         if not src:
             messagebox.showinfo(t("dlg_missing_t"), t("dlg_no_src"))
@@ -1237,6 +1333,7 @@ class App(tk.Tk):
                  on_done=self._after_analyze)
 
     def _do_analyze(self, src, mode, t0, t1, separate):
+        self.transcript = None
         shutil.rmtree(self.work, ignore_errors=True)
         os.makedirs(self.work, exist_ok=True)
         self.backing_path = None
@@ -1300,15 +1397,28 @@ class App(tk.Tk):
         self.draw_wave()
 
     def redetect(self):
+        if self.busy:
+            return
         if not len(self.wave_data):
             messagebox.showinfo(t("dlg_first_t"), t("dlg_first"))
             return
         found = pc.detect_clips(self.wave_data, self.wave_sr,
                                 max_clip=float(self.maxlen.get()),
                                 sensitivity=float(self.sens.get()))
+        self._caption_save()
+        previous = self.clips
         self.clips = [{"start": a, "end": b, "name": "clip%02d" % (i + 1),
                        "caption": ""}
                       for i, (a, b) in enumerate(found)]
+        # Preserve manually edited clips verbatim through redetection. Replace
+        # new detections overlapping them with those reviewed clip boundaries.
+        manual = [dict(c) for c in previous if c.get("_manual_caption") or (
+            c.get("caption") and c.get("caption") != c.get("_generated_caption"))]
+        self.clips = [c for c in self.clips if not any(
+            min(c["end"], m["end"]) > max(c["start"], m["start"]) for m in manual)]
+        self.clips.extend(manual)
+        self.clips.sort(key=lambda c: c["start"])
+        self._remap_captions()
         self.selected = 0 if self.clips else None
         self._log(t("log_redet", len(self.clips)))
         self.refresh_list()
@@ -1451,6 +1561,8 @@ class App(tk.Tk):
         new = self.caption_var.get().strip()
         if self.clips[i].get("caption", "") != new:
             self.clips[i]["caption"] = new
+            self.clips[i]["_manual_caption"] = True
+            self.clips[i].pop("_generated_caption", None)
             try:
                 self.tree.set(str(i), "caption", new)
             except Exception:
@@ -1467,6 +1579,8 @@ class App(tk.Tk):
         return "break"
 
     def _rename_selected(self, _e=None):
+        if self.busy:
+            return
         if self.selected is None:
             return
         c = self.clips[self.selected]
@@ -1477,26 +1591,33 @@ class App(tk.Tk):
             self.refresh_list()
 
     def _delete_selected(self):
+        if self.busy:
+            return
         if self.selected is None:
             return
+        self._caption_save()
         del self.clips[self.selected]
         self.selected = min(self.selected, len(self.clips) - 1)
         if self.selected < 0:
             self.selected = None
+        self._remap_captions()
         self.refresh_list()
         self.draw_wave()
 
     def _split_selected(self):
+        if self.busy:
+            return
         if self.selected is None:
             return
+        self._caption_save()
         c = self.clips[self.selected]
         mid = (c["start"] + c["end"]) / 2.0
         if mid - c["start"] < 0.1 or c["end"] - mid < 0.1:
             return
-        new = {"start": mid, "end": c["end"], "name": c["name"] + "_b",
-               "caption": c.get("caption", "")}
+        new = dict(c, start=mid, name=c["name"] + "_b")
         c["end"] = mid
         self.clips.insert(self.selected + 1, new)
+        self._remap_captions()
         self.refresh_list()
         self.draw_wave()
 
@@ -1646,6 +1767,9 @@ class App(tk.Tk):
 
     # ------------------------------------------------- Maus auf der Wellenform
     def _canvas_down(self, event):
+        if self.busy:
+            return
+        self._caption_save()
         if not len(self.wave_data):
             return
         tt = self._x2t(event.x)
@@ -1672,6 +1796,8 @@ class App(tk.Tk):
         self.draw_wave()
 
     def _canvas_move(self, event):
+        if self.busy:
+            return
         if not self._drag:
             return
         tt = max(0.0, min(self.duration, self._x2t(event.x)))
@@ -1691,6 +1817,8 @@ class App(tk.Tk):
         self.draw_wave()
 
     def _canvas_up(self, event):
+        if self.busy:
+            return
         if not self._drag:
             return
         kind, ref = self._drag
@@ -1705,11 +1833,15 @@ class App(tk.Tk):
                 self.clips.sort(key=lambda c: c["start"])
                 self.selected = next(i for i, c in enumerate(self.clips)
                                      if abs(c["start"] - a) < 1e-9)
+        self._remap_captions()
         self.refresh_list()
         self.draw_wave()
 
     # -------------------------------------------------------------- BAUEN
     def start_build(self):
+        if self.busy:
+            return
+        self._caption_save()
         if not self.clips:
             messagebox.showinfo(t("dlg_noclips_t"), t("dlg_noclips"))
             return
@@ -1751,6 +1883,9 @@ class App(tk.Tk):
         if captions:
             pc.write_captions(dest, captions)
             self._log("  %s (%d)" % (pc.CAPTION_FILE, len(captions)))
+
+        if dub and self.transcript is not None:
+            tr.write_outputs(dest, tr.subtitle_outputs(self.transcript))
 
         if dub and self.backing_path and os.path.isfile(self.backing_path):
             self._set_status(t("st_backing"), 68)
@@ -1879,6 +2014,9 @@ class App(tk.Tk):
     def _save_cfg(self):
         self.cfg.update({
             "lang": LANG,
+            "asr_language": self.asr_language.get().strip().lower(),
+            "asr_model": self.asr_model.get(),
+            "asr_device": self.asr_device.get(),
             "src_mode": self.src_mode.get(),
             "last_url": self.url_var.get(),
             "t_start": self.t_start.get(),

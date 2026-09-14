@@ -93,13 +93,54 @@ checked, the app closes, the files are replaced and it starts again. Your
 `packs/`, `dubs/`, `tools/` and settings are never touched, and the previous
 files are backed up to `%TEMP%` first.
 
-This is the only network access apart from downloading a video you asked for.
+Network access also includes downloading a video you asked for and the initial
+download of a speech-recognition model when you generate captions.
 Nothing is sent, no account is involved. To switch it off, set
 `"check_updates": false` in `dubforge_settings.json` or `dubstage_settings.json`.
 
 ## Languages
 
 The interface is available in German and English, switchable at runtime in the top right of either tool.
+
+## Automatic captions
+
+Choose the optional speech-recognition installation in `Setup.bat`, or run
+`py -m pip install -r requirements-transcription.txt`.
+
+After **Load and analyse**, enter the spoken language code (`fr` for French,
+`en` for English, `de` for German) and click **Generate captions**. Review and
+correct the text in the existing subtitle field, then build your pack.
+The spoken language is independent of the interface language.
+
+For a completed pack:
+
+```powershell
+py caption_pack.py packs/Test --language fr
+```
+
+This writes `_captions.json` for DubStage and full-scene `dub_video.srt` and
+`dub_video.vtt` files. Existing nonempty captions are preserved; use
+`--overwrite` (or **Replace existing** in DubForge) to regenerate them.
+The command backs up replaced output files in `_caption_backup_*` inside the pack.
+It does not change the video or audio clips.
+
+Recognition uses local [faster-whisper](https://github.com/SYSTRAN/faster-whisper),
+defaulting to multilingual `large-v3` for accuracy and CPU/int8 for compatibility.
+The model download requires several GB of disk space; CPU processing may take
+several minutes or longer. After download, the cached model can run offline.
+Audio is never uploaded. Quiet input is boosted before speech detection without
+changing the source file or its timing. Choose `turbo` or `small` for faster processing with
+an accuracy tradeoff. All supported Whisper language codes can be entered.
+
+SRT/VTT contain the complete original-audio transcript, including speech outside
+the dubbing clips. Clip-caption corrections only affect DubStage text; edit the
+SRT/VTT separately to correct the full transcript. These are separate subtitle
+files, not subtitles burned into the video, and no translation is performed.
+Always review generated text and timing, especially short clips and overlapping voices.
+
+Optional `--device cuda` (or `cuda` in the app) requires a compatible NVIDIA GPU,
+CUDA 12 cuBLAS and cuDNN 9 libraries; see the faster-whisper installation guide.
+CPU works without CUDA. If recognition fails, existing captions are retained.
 
 ## Documentation
 

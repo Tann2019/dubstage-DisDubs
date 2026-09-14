@@ -4,6 +4,39 @@ Szenen aus Videos selbst nachsprechen. **DubForge** zerlegt ein Video in einspre
 
 *English version: `README_EN.md`*
 
+## Automatische Untertitel
+
+Die optionale Spracherkennung in `Setup.bat` installieren, alternativ mit
+`py -m pip install -r requirements-transcription.txt`. Nach der Analyse den Code
+der gesprochenen Sprache eingeben (`fr` Franzoesisch, `en` Englisch, `de` Deutsch;
+weitere Whisper-Sprachcodes sind moeglich) und **Untertitel generieren** anklicken.
+Die gesprochene Sprache wird getrennt von der Oberflaechensprache gespeichert.
+
+Standard ist das mehrsprachige Modell `large-v3` fuer hohe Genauigkeit auf der
+CPU. `turbo` und `small` sind schnellere Alternativen. Bei erster Nutzung wird
+das Modell heruntergeladen (mehrere GB fuer large-v3). Danach funktioniert es
+aus dem Cache offline; Audio wird nie hochgeladen. Auf der CPU kann die
+Verarbeitung mehrere Minuten oder laenger dauern. Optionales `cuda` braucht
+eine kompatible NVIDIA-GPU, CUDA 12 cuBLAS und cuDNN 9; Details stehen in der
+[faster-whisper-Anleitung](https://github.com/SYSTRAN/faster-whisper).
+
+Text im vorhandenen Untertitelfeld pruefen und korrigieren. Standardmaessig
+werden nur leere Felder gefuellt; **Vorhandene ersetzen** regeneriert auch
+bestehenden Text. Zeitkorrekturen ordnen generierte Woerter neu zu und erhalten
+manuelle Korrekturen. Erneute Erkennung behaelt manuell korrigierte Clips bei.
+Bei Fehlern bleiben bestehende Untertitel erhalten.
+
+DubStage-Videopacks erhalten zusaetzlich `dub_video.srt` und `dub_video.vtt` mit
+dem gesamten Originalton-Transkript, auch ausserhalb der Clips. Manuelle
+Clip-Korrekturen aendern nur `_captions.json`; SRT/VTT bei Bedarf separat
+bearbeiten. Es gibt keine Uebersetzung und keine eingebrannten Untertitel.
+
+Vorhandene Packs: `py caption_pack.py packs/Test --language fr`.
+Optionen: `--model large-v3|turbo|small`, `--device cpu|cuda`, `--overwrite`.
+Bestehender Text bleibt ohne `--overwrite` erhalten. Ersetzte Ausgabedateien
+werden im Pack unter `_caption_backup_*` gesichert. Video, Audio und Clipnamen
+bleiben unveraendert. Clips ohne zugeordnete Sprache werden gemeldet.
+
 ---
 
 ## Einmalig einrichten
@@ -130,9 +163,9 @@ ein paar Sekunden.
 werden nur die Programmdateien ersetzt, und die alten landen vorher in einem
 Sicherungsordner unter `%TEMP%`, mit einem Protokoll daneben.
 
-Außer beim Herunterladen eines Videos, das du selbst angibst, ist das der
-einzige Moment, in dem eines der Werkzeuge ins Netz geht — gesendet wird nichts.
-Abschalten lässt es sich mit `"check_updates": false` in
+Netzzugriffe umfassen auch angeforderte Video-Downloads und das erstmalige
+Herunterladen eines Spracherkennungsmodells. Audio wird nie hochgeladen.
+Update-Pruefungen lassen sich abschalten mit `"check_updates": false` in
 `dubforge_settings.json` oder `dubstage_settings.json`.
 
 ---

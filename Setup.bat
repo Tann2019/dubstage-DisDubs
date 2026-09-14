@@ -60,6 +60,23 @@ if errorlevel 2 (
 )
 echo.
 
+rem ---------------------------------------------------------- Spracherkennung
+echo [Optional] Automatische Untertitel / automatic captions ^(faster-whisper^) ...
+echo       Audio bleibt lokal. Das Modell wird bei erster Nutzung heruntergeladen.
+echo       Audio stays local. First use downloads the selected model.
+echo       large-v3 braucht mehrere GB Speicherplatz; CPU-Verarbeitung kann dauern.
+choice /c JN /n /m "       Spracherkennung installieren? / Install speech recognition? [J/N] "
+if errorlevel 2 (
+  echo       Uebersprungen - manuelle Untertitel funktionieren weiterhin.
+) else (
+  %PY% -m pip install -r requirements-transcription.txt
+  if errorlevel 1 (
+    echo [!] Spracherkennung konnte nicht installiert werden.
+    echo     Manuelle Untertitel funktionieren weiterhin.
+  )
+)
+echo.
+
 rem ---------------------------------------------------------- ffmpeg
 echo [4/4] ffmpeg pruefen ...
 set "FFOK="

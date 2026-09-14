@@ -54,6 +54,40 @@ Enter a pack name, tick **"With video"** (required for DubStage), then **"Build 
 
 ## What ends up in the pack
 
+### Automatic captions
+
+Install the optional speech-recognition packages using `Setup.bat`, or
+`py -m pip install -r requirements-transcription.txt`. After analysis, enter a
+spoken language code (`fr` French, `en` English, `de` German; other Whisper codes
+are accepted), select a model, and click **Generate captions**. The spoken
+language is remembered separately from the interface language.
+
+The default `large-v3` model prioritizes accuracy; `turbo` and `small` are faster
+alternatives. CPU/int8 works without a GPU. CUDA requires a compatible NVIDIA
+GPU with CUDA 12 cuBLAS and cuDNN 9, as described in the
+[faster-whisper guide](https://github.com/SYSTRAN/faster-whisper).
+The first use downloads a model (several GB for large-v3); audio stays local,
+and cached models work offline. CPU transcription may take several minutes or longer.
+
+Review generated captions in the existing subtitle field. Empty captions are
+filled by default; **Replace existing** explicitly regenerates existing text.
+Timing changes remap generated captions while preserving manual corrections.
+**Detect again** preserves manually corrected clips and detects the other clips anew.
+If recognition fails, existing captions remain available.
+
+Building a DubStage video pack also exports `dub_video.srt` and `dub_video.vtt`
+from the full original-audio transcript, including speech outside clips. Manual
+clip corrections affect `_captions.json`, not these full-scene subtitle files.
+Edit those separately if needed. There is no translation or burned-in video text.
+
+For an existing pack, run `py caption_pack.py packs/Test --language fr`.
+Optional flags are `--model large-v3|turbo|small`, `--device cpu|cuda`, and
+`--overwrite`. The command preserves nonempty clip captions unless overwrite
+is specified, backs up replaced outputs in `_caption_backup_*`, and leaves all
+media and timestamps untouched. It reports clips with no recognized speech.
+
+### Pack files
+
 | File | Purpose |
 |---|---|
 | `01_Name_44-048.wav` | One clip. The trailing number is its start time in the video (44.048 s) |
@@ -129,8 +163,8 @@ Your `packs/`, `dubs/`, `tools/` and settings are never touched. Only the
 program files are replaced, and the previous ones are copied to a backup folder
 in `%TEMP%` beforehand, with a log of every step beside it.
 
-Apart from downloading a video you asked for, this is the only time either tool
-touches the network, and nothing is sent. To switch it off, set
+Network access also includes requested video downloads and the initial download
+of speech-recognition models. Audio is never uploaded. To switch update checks off, set
 `"check_updates": false` in `dubforge_settings.json` or `dubstage_settings.json`.
 
 ---
