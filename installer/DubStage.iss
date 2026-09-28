@@ -193,8 +193,8 @@ var
   T: String;
 begin
   T := S;
-  StringChangeEx(T, , '', True);
-  Result :=  + T + ;
+  StringChangeEx(T, '''', '''''', True);
+  Result := '''' + T + '''';
 end;
 
 { ------------------------------------------------------------ ffmpeg laden }
