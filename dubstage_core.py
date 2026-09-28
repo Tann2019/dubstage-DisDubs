@@ -280,6 +280,38 @@ def frames_dir_for(pack):
     return os.path.join(CACHE_DIR, key)
 
 
+def pack_duration(pack):
+    """Laenge des Videos - einmal ermittelt, danach gemerkt."""
+    if not pack.video_duration:
+        try:
+            pack.video_duration = pc.probe_duration(pack.video)
+        except Exception:
+            pack.video_duration = 0.0
+    return pack.video_duration
+
+
+def thumb_path(pack):
+    return os.path.join(CACHE_DIR, "thumbs", os.path.basename(frames_dir_for(pack)) + ".jpg")
+
+
+def make_thumb(pack, width=320):
+    """Vorschaubild fuer das Menue. Gibt den Pfad zurueck oder None."""
+    path = thumb_path(pack)
+    try:
+        if os.path.isfile(path) and \
+                os.path.getmtime(path) >= os.path.getmtime(pack.video):
+            return path
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # Nicht das allererste Bild - das ist oft schwarz.
+        at = min(2.0, pack_duration(pack) / 3.0)
+        pc.run([pc.ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
+                "-ss", "%.3f" % at, "-i", pack.video, "-frames:v", "1",
+                "-vf", "scale=%d:-2" % int(width), "-q:v", "4", path])
+        return path if os.path.isfile(path) else None
+    except Exception:
+        return None
+
+
 def extract_frames(pack, fps=FRAME_FPS, width=FRAME_W, log=None, force=False):
     """
     Zerlegt das OGV vorab in JPEGs. Umgeht damit jede Codec-Frage

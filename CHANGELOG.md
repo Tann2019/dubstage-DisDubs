@@ -22,6 +22,18 @@ versioning follows [Semantic Versioning](https://semver.org/).
   instead of Python's, and Windows no longer groups the two tools under
   "Python".
 
+### Changed
+
+- **DubForge has a new look** that matches DubStage: the three steps sit on
+  numbered cards, the target format is a segmented switch in the header next to
+  the logo, buttons, fields and sliders are flat and consistent, scrollbars are
+  slim, the clip table has alternating rows, and the waveform lights up inside
+  each clip, with drag handles on the edges and numbered badges.
+- **DubStage's menu** shows the logo and a preview frame for every pack.
+- German texts use real umlauts ("Clips prüfen", "Löschen") instead of
+  "ue"/"oe".
+
+
 ### Fixed
 
 - **A pack name of `..` deleted the program folder.** Building a pack first
@@ -45,6 +57,9 @@ versioning follows [Semantic Versioning](https://semver.org/).
   PATH, which sent it down a torchaudio fallback that newer versions no longer
   support. `tools/` is now passed along, and `requirements-demucs.txt` keeps
   torch/torchaudio below 2.9 until Demucs supports it.
+- **DubStage's menu ran ffprobe for every pack on every redraw**, e.g. while
+  resizing the window; the duration is now read once. Redrawing also no longer
+  resets a microphone you picked but have not tested yet.
 - **DubForge opened with a delay of several seconds** while it checked ffmpeg
   and yt-dlp; that check now runs in the background.
 - **After a self-update, the app restarted through `Start ….bat`**, which picks

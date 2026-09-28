@@ -39,14 +39,14 @@ def set_lang(code):
 _MSG = {
     "no_ffmpeg": (
         "ffmpeg wurde nicht gefunden.\n\n"
-        "Bitte das Setup erneut ausfuehren, oder ffmpeg manuell installieren.",
+        "Bitte das Setup erneut ausführen, oder ffmpeg manuell installieren.",
         "ffmpeg was not found.\n\n"
         "Please run the setup again, or install ffmpeg manually."),
     "no_ffprobe": (
-        "ffprobe wurde nicht gefunden. Bitte das Setup erneut ausfuehren.",
+        "ffprobe wurde nicht gefunden. Bitte das Setup erneut ausführen.",
         "ffprobe was not found. Please run the setup again."),
     "no_ytdlp": (
-        "yt-dlp wurde nicht gefunden. Bitte das Setup erneut ausfuehren.",
+        "yt-dlp wurde nicht gefunden. Bitte das Setup erneut ausführen.",
         "yt-dlp was not found. Please run the setup again."),
     "cmd_failed": (
         "Befehl fehlgeschlagen (%s):\n%s",
@@ -59,7 +59,7 @@ _MSG = {
         "Demucs did not produce a vocals file."),
     "no_theora": (
         "Dieser ffmpeg kann kein OGV schreiben (libtheora/libvorbis fehlt).\n"
-        "Bitte das Setup erneut ausfuehren oder MP4 als Format waehlen.",
+        "Bitte das Setup erneut ausführen oder MP4 als Format wählen.",
         "This ffmpeg cannot write OGV (libtheora/libvorbis missing).\n"
         "Please run the setup again or choose MP4 as the format."),
     "bad_time": (
@@ -92,12 +92,12 @@ _MSG = {
     "dl_section_fail": (
         "Der Ausschnitt-Download ging nicht. Das passiert, wenn ffmpeg die\n"
         "Videodaten selbst holen soll und dabei abgewiesen wird. Ich lade\n"
-        "jetzt das ganze Video und schneide es hier - das dauert laenger.",
+        "jetzt das ganze Video und schneide es hier - das dauert länger.",
         "Downloading just the section failed. That happens when ffmpeg has to\n"
         "fetch the video data itself and gets refused. Downloading the whole\n"
         "video now and cutting it here - this takes longer."),
     "dl_trim_local": (
-        "Download fertig, schneide auf die gewaehlte Zeitspanne ...",
+        "Download fertig, schneide auf die gewählte Zeitspanne ...",
         "Download finished, cutting to the chosen time span ..."),
     "ytdlp_at": (
         "Benutztes yt-dlp: %s",
@@ -106,16 +106,16 @@ _MSG = {
         "Benutztes yt-dlp: Modul in %s",
         "yt-dlp in use: module in %s"),
     "ytdlp_self": (
-        "Eigenstaendige Datei - erneuert sich selbst.",
+        "Eigenständige Datei - erneuert sich selbst.",
         "Standalone file - updating itself."),
     "ytdlp_wrap": (
-        "Das ist ein pip-Starter, kein eigenstaendiges Programm. "
+        "Das ist ein pip-Starter, kein eigenständiges Programm. "
         "Ich nehme pip aus derselben Installation: %s",
         "This is a pip launcher, not a standalone build. "
         "Using pip from the same installation: %s"),
     "ytdlp_shadow": (
         "Achtung: pip hat %s aktualisiert, benutzt wird aber %s.\n"
-        "Die aeltere Datei liegt im PATH und hat Vorrang - entfernen oder "
+        "Die ältere Datei liegt im PATH und hat Vorrang - entfernen oder "
         "erneuern, sonst bleibt der alte Stand aktiv.",
         "Note: pip updated %s, but %s is what actually runs.\n"
         "The older file sits in PATH and wins - remove or update it, "
