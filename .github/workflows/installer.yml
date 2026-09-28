@@ -102,5 +102,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $tag = "${{ github.event.release.tag_name }}"
           $files = (Get-ChildItem dist\*.exe).FullName
-          gh release upload "${{ github.event.release.tag_name }}" $files --clobber
+          gh release upload $tag $files --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Von Hand ohne Text veroeffentlicht? Titel und Text aus den
+          # vorbereiteten Release-Notes uebernehmen.
+          $notes = ".github/release-notes/$tag.md"
+          $body = gh release view $tag --json body --jq .body
+          if ((Test-Path $notes) -and -not "$body".Trim()) {
+            $lines = Get-Content $notes -Encoding utf8
+            $title = $lines[0] -replace '^#\s*', ''
+            $file = Join-Path $env:RUNNER_TEMP "body.md"
+            ($lines | Select-Object -Skip 1) -join "`n" | Set-Content $file -Encoding utf8
+            gh release edit $tag --title $title --notes-file $file
+          }
