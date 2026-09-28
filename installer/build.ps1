@@ -13,6 +13,14 @@
   (winget install JRSoftware.InnoSetup). Aufruf aus dem Projektordner:
 
       powershell -ExecutionPolicy Bypass -File installer\build.ps1
+
+  Signieren (optional): Liegt ein Code-Signing-Zertifikat als PFX vor,
+  vorher setzen - dann werden Setup.exe und Uninstaller signiert:
+
+      $env:CODESIGN_PFX_BASE64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes("cert.pfx"))
+      $env:CODESIGN_PASSWORD   = "..."
+
+  In GitHub Actions kommen beide aus den gleichnamigen Repository-Secrets.
 #>
 [CmdletBinding()]
 param(
@@ -115,9 +123,28 @@ if (-not $iscc) {
     throw "Inno Setup 6 nicht gefunden. Installieren mit: winget install JRSoftware.InnoSetup"
 }
 
+$isccArgs = @("/DAppVersion=$Version")
+$pfx = $null
+if ($env:CODESIGN_PFX_BASE64) {
+    $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+        Sort-Object FullName | Select-Object -Last 1
+    if (-not $signtool) { throw "signtool.exe nicht gefunden (Windows SDK installieren)." }
+    $pfx = Join-Path $Build "codesign.pfx"
+    [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CODESIGN_PFX_BASE64))
+    # $q und $f ersetzt Inno Setup selbst: Anfuehrungszeichen und Zieldatei.
+    $cmd = '$q' + $signtool.FullName + '$q sign /f $q' + $pfx + '$q /p $q' + $env:CODESIGN_PASSWORD +
+           '$q /fd sha256 /tr http://timestamp.digicert.com /td sha256 /d $qDubStage Setup$q $f'
+    $isccArgs += @("/DSign", "/Ssigntool=$cmd")
+    Step "Signieren eingeschaltet ($($signtool.FullName))"
+}
+
 Step "Setup.exe bauen ($iscc)"
-& $iscc "/DAppVersion=$Version" (Join-Path $PSScriptRoot "DubStage.iss")
-if ($LASTEXITCODE -ne 0) { throw "Inno Setup ist fehlgeschlagen." }
+try {
+    & $iscc @isccArgs (Join-Path $PSScriptRoot "DubStage.iss")
+    if ($LASTEXITCODE -ne 0) { throw "Inno Setup ist fehlgeschlagen." }
+} finally {
+    if ($pfx -and (Test-Path $pfx)) { Remove-Item $pfx -Force }
+}
 
 $out = Join-Path $Root "dist\DubStage-Setup-$Version.exe"
 Step ("Fertig: {0} ({1:N0} MB)" -f $out, ((Get-Item $out).Length / 1MB))

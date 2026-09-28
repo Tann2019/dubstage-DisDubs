@@ -7,6 +7,10 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.3.0] - 2026-09-28
+
 ### Added
 
 - **A real Windows installer.** `DubStage-Setup-<version>.exe` installs both
@@ -290,7 +294,8 @@ switchable at runtime.
   clip lengths it lands one sample short, which previously raised mid-playback
   and froze the interface.
 
-[Unreleased]: https://github.com/xmrius/dubstage/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/xmrius/dubstage/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/xmrius/dubstage/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/xmrius/dubstage/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/xmrius/dubstage/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/xmrius/dubstage/compare/v1.0.1...v1.1.0

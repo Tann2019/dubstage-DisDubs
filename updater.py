@@ -36,7 +36,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 # ------------------------------------------------------------------ Eckdaten
-VERSION = "1.2.1"
+VERSION = "1.3.0"
 REPO = "xmrius/dubstage"
 
 API_LATEST = "https://api.github.com/repos/%s/releases/latest" % REPO
@@ -55,9 +55,9 @@ ALLOWED_HOSTS = ("api.github.com", "github.com", "codeload.github.com",
 # Was beim Tausch ueberschrieben werden darf.
 OK_EXT = (".pyw", ".py", ".bat", ".cmd", ".md", ".png", ".ico", ".txt")
 OK_NAMES = ("LICENSE",)
-# runtime/ ist das Python, das Setup.exe mitbringt; installer/ braucht nur,
-# wer Setup.exe selbst baut.
-SKIP_DIRS = ("packs", "dubs", "tools", "runtime", "installer", ".git",
+# runtime/ ist das Python, das Setup.exe mitbringt; installer/ und dev/
+# braucht nur, wer Setup.exe oder die Screenshots selbst baut.
+SKIP_DIRS = ("packs", "dubs", "tools", "runtime", "installer", "dev", ".git",
              ".github", "__pycache__", ".venv", "venv")
 SKIP_FILES = ("dubforge_settings.json", "dubstage_settings.json",
               "push_log.txt", "RELEASE_NOTES.md", "Push to GitHub.bat")

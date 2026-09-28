@@ -4,6 +4,12 @@ Szenen aus Videos selbst nachsprechen. **DubForge** zerlegt ein Video in einspre
 
 *English version: `README_EN.md`*
 
+<img src="docs/dubforge.png" alt="DubForge: Wellenform mit erkannten Clips und Untertiteln" width="900">
+
+<img src="docs/dubstage-record.png" alt="DubStage: Aufnahme einer Zeile, der eigene Take live über dem Original" width="900">
+
+<sub>Bildmaterial: <i>Tears of Steel</i> — (CC) Blender Foundation | <a href="https://mango.blender.org">mango.blender.org</a>, CC BY 3.0. Untertitel von der eingebauten Spracherkennung in DubForge erzeugt. Die Screenshots zeigen die englische Oberfläche.</sub>
+
 ## Automatische Untertitel
 
 Die optionale Spracherkennung im Setup (oder in `Setup.bat`) auswählen, alternativ mit

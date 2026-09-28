@@ -1,11 +1,16 @@
 # Baut DubStage-Setup-<Version>.exe auf Windows.
 #  - bei jedem Push: als Artefakt des Laufs herunterladbar
-#  - bei einem veroeffentlichten Release: zusaetzlich an das Release gehaengt
+#  - bei einem Tag v1.2.3: legt das Release an (Titel und Text aus
+#    .github/release-notes/v1.2.3.md) und haengt Setup.exe an
+#  - bei einem von Hand veroeffentlichten Release: haengt Setup.exe an
+# Signiert wird, wenn die Secrets CODESIGN_PFX_BASE64 und CODESIGN_PASSWORD
+# gesetzt sind (siehe installer/build.ps1).
 name: Windows installer
 
 on:
   push:
     branches: ["**"]
+    tags: ["v*"]
     paths-ignore: ["**.md", "docs/**"]
   workflow_dispatch:
   release:
@@ -28,7 +33,19 @@ jobs:
 
       - name: Build
         shell: pwsh
+        env:
+          CODESIGN_PFX_BASE64: ${{ secrets.CODESIGN_PFX_BASE64 }}
+          CODESIGN_PASSWORD: ${{ secrets.CODESIGN_PASSWORD }}
         run: ./installer/build.ps1
+
+      - name: Tag matches VERSION
+        if: github.ref_type == 'tag' || github.event_name == 'release'
+        shell: pwsh
+        run: |
+          $tag = if ("${{ github.event_name }}" -eq "release") { "${{ github.event.release.tag_name }}" } else { "${{ github.ref_name }}" }
+          $m = Select-String -Path updater.py -Pattern '^VERSION\s*=\s*"([^"]+)"'
+          $ver = $m.Matches[0].Groups[1].Value
+          if ($tag -ne "v$ver") { throw "Tag $tag passt nicht zu VERSION $ver in updater.py" }
 
       - name: Tests (with the bundled Python)
         shell: pwsh
@@ -56,6 +73,28 @@ jobs:
           name: DubStage-Setup
           path: dist/*.exe
           if-no-files-found: error
+
+      - name: Create release
+        if: github.ref_type == 'tag' && github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $files = (Get-ChildItem dist\*.exe).FullName
+          $notes = ".github/release-notes/$tag.md"
+          if (-not (Test-Path $notes)) { throw "$notes fehlt" }
+          $lines = Get-Content $notes -Encoding utf8
+          $title = $lines[0] -replace '^#\s*', ''
+          $body = Join-Path $env:RUNNER_TEMP "body.md"
+          ($lines | Select-Object -Skip 1) -join "`n" | Set-Content $body -Encoding utf8
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $files --clobber
+          } else {
+            gh release create $tag $files --title $title --notes-file $body --verify-tag
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Attach to release
         if: github.event_name == 'release'

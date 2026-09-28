@@ -65,6 +65,13 @@ WizardSmallImageFile=wizard-small-55.bmp,wizard-small-83.bmp,wizard-small-110.bm
 Compression=lzma2/max
 SolidCompression=yes
 
+; Signieren: build.ps1 setzt /DSign und das Signierkommando, sobald ein
+; Zertifikat hinterlegt ist (siehe dort). Auch der Uninstaller wird signiert.
+#ifdef Sign
+SignTool=signtool
+SignedUninstaller=yes
+#endif
+
 ; Laufende DubForge/DubStage vor dem Ueberschreiben schliessen.
 CloseApplications=yes
 RestartApplications=no
