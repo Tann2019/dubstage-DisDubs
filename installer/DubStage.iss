@@ -266,7 +266,8 @@ end;
 
 function RunPip(const Status, Args: String): Boolean;
 begin
-  Result := RunLogged(Status, ExpandConstant('{app}untime\python.exe'), PipArgs + Args);
+  Result := RunLogged(Status, ExpandConstant('{app}
+untime\python.exe'), PipArgs + Args);
 end;
 
 function InstallFfmpeg: Boolean;
@@ -309,12 +310,14 @@ begin
 
     if WizardIsComponentSelected('demucs') then
       if not RunPip(CustomMessage('StatusDemucs'),
-                    '-r "' + ExpandConstant('{app}equirements-demucs.txt') + '"') then
+                    '-r "' + ExpandConstant('{app}
+equirements-demucs.txt') + '"') then
         Failed := Failed + #13#10 + '  - Demucs';
 
     if WizardIsComponentSelected('asr') then
       if not RunPip(CustomMessage('StatusAsr'),
-                    '-r "' + ExpandConstant('{app}equirements-transcription.txt') + '"') then
+                    '-r "' + ExpandConstant('{app}
+equirements-transcription.txt') + '"') then
         Failed := Failed + #13#10 + '  - faster-whisper';
   finally
     WizardForm.ProgressGauge.Style := npbstNormal;
@@ -322,8 +325,9 @@ begin
   end;
 
   if Failed <> '' then
-    SuppressibleMsgBox(FmtMessage(CustomMessage('PartFailed'),
-      [Failed, ExpandConstant('{log}')]), mbError, MB_OK, IDOK);
+    { Eine Zeile, die mit "[" beginnt, haelt Inno fuer einen Abschnitt. }
+    SuppressibleMsgBox(FmtMessage(CustomMessage('PartFailed'), [Failed, ExpandConstant('{log}')]),
+      mbError, MB_OK, IDOK);
 end;
 
 { ------------------------------------------------------------ Deinstallation }
