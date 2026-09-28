@@ -11,11 +11,11 @@ on:
   workflow_dispatch:
     inputs:
       start:
-        description: "Start of the scene (e.g. 0:10)"
-        default: "0:10"
+        description: "Start of the scene (e.g. 0:20)"
+        default: "0:20"
       end:
-        description: "End of the scene (e.g. 1:05)"
-        default: "1:05"
+        description: "End of the scene (e.g. 0:46)"
+        default: "0:46"
 
 permissions:
   contents: write
@@ -67,7 +67,7 @@ jobs:
       - name: Screenshots
         shell: pwsh
         run: |
-          build\runtime\python.exe dev\screenshots.py --video "$env:RUNNER_TEMP\tos.mov" --start "${{ inputs.start || '0:10' }}" --end "${{ inputs.end || '1:05' }}"
+          build\runtime\python.exe dev\screenshots.py --video "$env:RUNNER_TEMP\tos.mov" --start "${{ inputs.start || '0:20' }}" --end "${{ inputs.end || '0:46' }}"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - uses: actions/upload-artifact@v4

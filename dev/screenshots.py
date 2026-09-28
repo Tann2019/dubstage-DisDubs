@@ -16,7 +16,7 @@ damit Schrift und Darstellung genau so aussehen wie beim Nutzer:
 Die "Aufnahmen" sind die Originalzeilen, leicht verschoben - im Runner gibt
 es kein Mikrofon.
 
-    python dev/screenshots.py --video tos.mov --start 0:10 --end 1:05
+    python dev/screenshots.py --video tos.mov --start 0:20 --end 0:46
 """
 
 import argparse
@@ -84,26 +84,40 @@ def forge(args):
     print("DubForge: transcribe", flush=True)
     transcript = tr.transcribe(app.audio_path, "en", args.model, "cpu",
                                lambda m, p: None)
-    # Clips so, wie man sie nach dem Durchsehen hat: eine Sprechzeile je
-    # Clip, zu lange Saetze an der Wortgrenze geteilt.
-    clips = []
-    for seg in transcript.segments:
-        words = [w for w in seg.words if w.end > w.start] or []
-        if not words:
-            continue
-        cur = [words[0]]
-        for w in words[1:]:
-            if w.end - cur[0].start > 5.5:
+    # Clips so, wie man sie nach dem Durchsehen hat: ein Satz je Clip.
+    # Getrennt wird an Satzenden und Sprechpausen, zu Langes am letzten Komma.
+    words = [w for seg in transcript.segments for w in seg.words
+             if w.end > w.start]
+    clips, cur = [], []
+    for w in words:
+        if cur:
+            gap = w.start - cur[-1].end
+            ended = cur[-1].text.strip().endswith((".", "?", "!"))
+            too_long = w.end - cur[0].start > 6.0
+            if gap > 0.7 or (ended and cur[-1].end - cur[0].start > 1.0) \
+                    or too_long:
+                if too_long and not ended:
+                    cut = max((i for i, x in enumerate(cur[:-1])
+                               if x.text.strip().endswith(",")), default=None)
+                    if cut is not None:
+                        clips.append(cur[:cut + 1])
+                        cur = cur[cut + 1:]
+                        cur.append(w)
+                        continue
                 clips.append(cur)
-                cur = [w]
-            else:
-                cur.append(w)
+                cur = []
+        cur.append(w)
+    if cur:
         clips.append(cur)
-    app.clips = [{"start": max(0.0, c[0].start - 0.08),
-                  "end": min(app.duration, c[-1].end + 0.12),
-                  "name": "clip%02d" % (i + 1),
-                  "caption": "".join(w.text for w in c).strip()}
-                 for i, c in enumerate(clips)]
+    app.clips = []
+    for c in clips:
+        a = max(0.0, c[0].start - 0.08)
+        if app.clips:
+            a = max(a, app.clips[-1]["end"] + 0.02)
+        app.clips.append({"start": a,
+                          "end": min(app.duration, c[-1].end + 0.12),
+                          "name": "clip%02d" % (len(app.clips) + 1),
+                          "caption": "".join(w.text for w in c).strip()})
     app.transcript = transcript
     print("  %d clips" % len(app.clips), flush=True)
     for c in app.clips:
@@ -195,7 +209,7 @@ def stage(args):
     g.mic.stop_play = lambda: None
     g.build_finale()
     pump(g, 0.6)
-    target = next((l for l in lines[len(lines) // 2:] if l.caption), lines[-1])
+    target = max(lines, key=lambda l: len(l.caption or ""))
     if g._play:
         g._play["t0"] = time.perf_counter() - (target.start + 0.4)
     pump(g, 0.4)
@@ -207,8 +221,8 @@ def stage(args):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--video", required=True)
-    ap.add_argument("--start", default="0:10")
-    ap.add_argument("--end", default="1:05")
+    ap.add_argument("--start", default="0:20")
+    ap.add_argument("--end", default="0:46")
     ap.add_argument("--pack", default="Tears_of_Steel")
     ap.add_argument("--model", default="small")
     ap.add_argument("--out", default=os.path.join(ROOT, "docs"))

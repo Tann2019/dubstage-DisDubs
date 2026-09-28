@@ -599,14 +599,14 @@ class Game(tk.Tk):
                                state="readonly", values=names,
                                style="Mic.TCombobox")
             self._embedded.append(box)
-            cv.create_window(180, my + 33, window=box, anchor="w")
+            cv.create_window(200, my + 33, window=box, anchor="w")
             self._btn(w - 250, my + 17, 100, 32, t("mic_test"),
                       self.test_mic, "ghost")
             self.mic_msg = cv.create_text(w - 270, my + 33, anchor="e",
                                           text="", fill=DIM,
                                           font=("Segoe UI", 10))
         else:
-            cv.create_text(180, my + 33, anchor="w", text=t("no_sd"),
+            cv.create_text(200, my + 33, anchor="w", text=t("no_sd"),
                            fill=RED, font=("Segoe UI", 10))
             self.mic_msg = None
 
@@ -1319,12 +1319,41 @@ class Game(tk.Tk):
                 traceback.print_exc()
 
     def _overlay(self, text=None, colour=GOLD, size=68):
-        state = "hidden" if text is None else "normal"
-        self.cv.itemconfigure(self.overlay_rect, state=state)
-        self.cv.itemconfigure(self.overlay_text, state=state)
-        if text is not None:
-            self.cv.itemconfigure(self.overlay_text, text=text, fill=colour,
-                                  font=("Segoe UI Black", size))
+        """
+        Einblendung ueber dem Video. Grosse Schrift (Countdown) als Plakette
+        in der Mitte; kleine (Aufnahme laeuft) als "REC"-Pille oben links -
+        die Mitte des Bildes muss frei bleiben, man spricht ja lippensynchron.
+        """
+        cv = self.cv
+        cv.delete("overlay")
+        for item in (self.overlay_rect, self.overlay_text):
+            cv.itemconfigure(item, state="hidden")
+        if text is None:
+            return
+        vx, vy, vw, vh = self.video_box
+        if size >= 40:
+            tid = cv.create_text(vx + vw / 2, vy + vh / 2, text=text,
+                                 fill=colour, font=("Segoe UI Black", size),
+                                 tags="overlay")
+            x0, y0, x1, y1 = cv.bbox(tid)
+            side = max(x1 - x0, y1 - y0) + 44
+            cx, cy = vx + vw / 2, vy + vh / 2
+            badge = round_rect(cv, cx - side / 2, cy - side / 2,
+                               cx + side / 2, cy + side / 2, r=28,
+                               fill="#0b0d16", outline=colour, width=2,
+                               tags="overlay")
+        else:
+            tid = cv.create_text(vx + 38, vy + 30, anchor="w",
+                                 text=text.upper(), fill=colour,
+                                 font=("Segoe UI Semibold", 11),
+                                 tags="overlay")
+            x0, y0, x1, y1 = cv.bbox(tid)
+            badge = round_rect(cv, vx + 14, vy + 14, x1 + 14, vy + 46, r=16,
+                               fill="#0b0d16", outline="", tags="overlay")
+            dot = cv.create_oval(vx + 24, vy + 25, vx + 32, vy + 33,
+                                 fill=colour, outline="", tags="overlay")
+            cv.tag_raise(dot, badge)
+        cv.tag_raise(tid, badge)
 
     # -------------------------------------------------- Wiedergabe-Schleife
     def _play_from(self, start, duration, on_end=None):

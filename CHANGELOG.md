@@ -34,6 +34,11 @@ Nothing yet.
   slim, the clip table has alternating rows, and the waveform lights up inside
   each clip, with drag handles on the edges and numbered badges.
 - **DubStage's menu** shows the logo and a preview frame for every pack.
+- **While recording, DubStage shows a small "● REC" badge** in the corner of
+  the video instead of a large banner across it, so the mouth you are syncing
+  to stays visible. The countdown sits on a solid badge in the middle.
+- **Screenshots** in the READMEs show the new interface, rendered on Windows
+  by `dev/screenshots.py` with footage from *Tears of Steel* (CC BY 3.0).
 - German texts use real umlauts ("Clips prüfen", "Löschen") instead of
   "ue"/"oe".
 
