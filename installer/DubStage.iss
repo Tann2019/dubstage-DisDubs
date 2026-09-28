@@ -220,18 +220,18 @@ begin
   FfmpegZip := '';
   { Bei einer Neuinstallation oder Reparatur ueber eine bestehende bleibt ein
     vorhandenes ffmpeg einfach liegen. }
-  if FileExists(AddBackslash(WizardDirValue) + 'toolsfmpeg.exe') then
+  if FileExists(AddBackslash(WizardDirValue) + 'tools\ffmpeg.exe') then
     exit;
 
   DownloadPage.SetText(CustomMessage('FfmpegTitle'), CustomMessage('FfmpegDesc'));
   DownloadPage.Show;
   try
     if TryDownload(FfmpegUrl1) then
-      FfmpegZip := ExpandConstant('{tmp}fmpeg.zip')
+      FfmpegZip := ExpandConstant('{tmp}\ffmpeg.zip')
     else if DownloadPage.AbortedByUser then
       Result := False
     else if TryDownload(FfmpegUrl2) then
-      FfmpegZip := ExpandConstant('{tmp}fmpeg.zip')
+      FfmpegZip := ExpandConstant('{tmp}\ffmpeg.zip')
     else if DownloadPage.AbortedByUser then
       Result := False
     else
@@ -266,16 +266,15 @@ end;
 
 function RunPip(const Status, Args: String): Boolean;
 begin
-  Result := RunLogged(Status, ExpandConstant('{app}
-untime\python.exe'), PipArgs + Args);
+  Result := RunLogged(Status, ExpandConstant('{app}\runtime\python.exe'), PipArgs + Args);
 end;
 
 function InstallFfmpeg: Boolean;
 var
   X, Tools, Cmd: String;
 begin
-  X := ExpandConstant('{tmp}fmpeg_x');
-  Tools := ExpandConstant('{app}	ools');
+  X := ExpandConstant('{tmp}\ffmpeg_x');
+  Tools := ExpandConstant('{app}\tools');
   ForceDirectories(Tools);
   { ZipFile statt Expand-Archive: in Windows PowerShell 5.1 um ein
     Vielfaches schneller. Aus dem bin-Ordner kommen ffmpeg, ffprobe, ffplay. }
@@ -288,7 +287,7 @@ begin
   RunLogged(CustomMessage('StatusFfmpeg'), 'powershell.exe', Cmd);
   DelTree(X, True, True, True);
   DeleteFile(FfmpegZip);
-  Result := FileExists(Tools + 'fmpeg.exe') and FileExists(Tools + 'fprobe.exe');
+  Result := FileExists(Tools + '\ffmpeg.exe') and FileExists(Tools + '\ffprobe.exe');
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -310,14 +309,12 @@ begin
 
     if WizardIsComponentSelected('demucs') then
       if not RunPip(CustomMessage('StatusDemucs'),
-                    '-r "' + ExpandConstant('{app}
-equirements-demucs.txt') + '"') then
+                    '-r "' + ExpandConstant('{app}\requirements-demucs.txt') + '"') then
         Failed := Failed + #13#10 + '  - Demucs';
 
     if WizardIsComponentSelected('asr') then
       if not RunPip(CustomMessage('StatusAsr'),
-                    '-r "' + ExpandConstant('{app}
-equirements-transcription.txt') + '"') then
+                    '-r "' + ExpandConstant('{app}\requirements-transcription.txt') + '"') then
         Failed := Failed + #13#10 + '  - faster-whisper';
   finally
     WizardForm.ProgressGauge.Style := npbstNormal;
