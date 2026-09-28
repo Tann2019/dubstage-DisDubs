@@ -1,0 +1,67 @@
+# Baut DubStage-Setup-<Version>.exe auf Windows.
+#  - bei jedem Push: als Artefakt des Laufs herunterladbar
+#  - bei einem veroeffentlichten Release: zusaetzlich an das Release gehaengt
+name: Windows installer
+
+on:
+  push:
+    branches: ["**"]
+    paths-ignore: ["**.md", "docs/**"]
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  setup-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y }
+
+      - name: Build
+        shell: pwsh
+        run: ./installer/build.ps1
+
+      - name: Tests (with the bundled Python)
+        shell: pwsh
+        run: |
+          build\runtime\python.exe -m unittest discover -s tests -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Silent install smoke test
+        shell: pwsh
+        run: |
+          $exe = (Get-ChildItem dist\*.exe | Select-Object -First 1).FullName
+          $dir = Join-Path $env:RUNNER_TEMP "dubstage-install"
+          Start-Process $exe -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=`"$dir`"", "/LOG=`"$env:RUNNER_TEMP\setup.log`"" -Wait
+          Get-Content "$env:RUNNER_TEMP\setup.log" -Tail 40
+          foreach ($f in "runtime\pythonw.exe", "tools\ffmpeg.exe", "tools\ffprobe.exe", "DubForge.pyw", "DubStage.pyw", "assets\dubstage.ico") {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "missing after install: $f" }
+          }
+          & (Join-Path $dir "runtime\python.exe") -c "import sys; sys.path.insert(0, r'$dir'); import dubforge_core as pc; print(pc.ffmpeg()); print(pc.ytdlp())"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $shortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "DubStage.lnk"
+          if (-not (Test-Path $shortcut)) { throw "start menu shortcut missing" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DubStage-Setup
+          path: dist/*.exe
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = (Get-ChildItem dist\*.exe).FullName
+          gh release upload "${{ github.event.release.tag_name }}" $files --clobber

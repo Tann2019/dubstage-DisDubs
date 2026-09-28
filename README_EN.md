@@ -8,12 +8,14 @@ Dub scenes from video yourself. **DubForge** cuts a video into speakable clips, 
 
 ## One-time setup
 
-1. Put all files into one folder, e.g. `F:\DubForge`
-2. Double-click **`Setup.bat`**
+1. Download **`DubStage-Setup-<version>.exe`** from the [releases page](https://github.com/xmrius/dubstage/releases/latest)
+2. Run it — no admin rights, no Python needed
 
-The setup installs the Python packages, downloads ffmpeg into a `tools` subfolder, and asks whether to install Demucs for vocal separation. Demucs pulls in PyTorch, several hundred MB up to ~2 GB. If you say no, everything still works, just without a backing track.
+The setup brings its own Python with all packages, downloads ffmpeg, and lets you pick two optional parts: Demucs for vocal separation (pulls in PyTorch, up to ~2 GB — without it everything still works, just without a backing track) and speech recognition for automatic captions. Run the setup again at any time to add them.
 
-Then: **`Start DubForge.bat`** to build, **`Start DubStage.bat`** to record.
+Then start **DubForge** to build and **DubStage** to record — from the Start menu or the desktop.
+
+*Without the installer:* put all files into one folder, double-click **`Setup.bat`** (needs Python 3.9+), then use **`Start DubForge.bat`** and **`Start DubStage.bat`**.
 
 ---
 
@@ -56,7 +58,7 @@ Enter a pack name, tick **"With video"** (required for DubStage), then **"Build 
 
 ### Automatic captions
 
-Install the optional speech-recognition packages using `Setup.bat`, or
+Pick the optional speech recognition in the setup (or `Setup.bat`), or
 `py -m pip install -r requirements-transcription.txt`. After analysis, enter a
 spoken language code (`fr` French, `en` English, `de` German; other Whisper codes
 are accepted), select a model, and click **Generate captions**. The spoken
@@ -171,9 +173,11 @@ of speech-recognition models. Audio is never uploaded. To switch update checks o
 
 ## When something goes wrong
 
+**SmartScreen warns about the setup** — It is not code-signed. Click *More info → Run anyway*.
+
 **Windows blocks the BAT files** — Right-click → Properties → tick **Unblock** at the bottom. Or in PowerShell inside the folder: `Get-ChildItem -Recurse | Unblock-File`. Important: move the files out of the downloads folder into a normal folder first.
 
-**"ffmpeg not found"** — Run Setup.bat again. If that fails: grab the **release full** build from `gyan.dev/ffmpeg/builds`, extract it, and put `ffmpeg.exe`, `ffprobe.exe` and `ffplay.exe` from `bin` into `tools\`.
+**"ffmpeg not found"** — Run the setup (or Setup.bat) again. If that fails: grab the **release full** build from `gyan.dev/ffmpeg/builds`, extract it, and put `ffmpeg.exe`, `ffprobe.exe` and `ffplay.exe` from `bin` into `tools\`.
 
 **A YouTube download fails** — Almost always an outdated yt-dlp. YouTube keeps changing how it serves video, so the tool only stays current for a few weeks. Click **Update yt-dlp** in the top right of DubForge; the version and its age are logged at startup. By hand: `py -m pip install --upgrade yt-dlp`.
 

@@ -1,0 +1,7 @@
+# Optional: Stimmen-Trennung / vocal separation. Laedt PyTorch (bis ~2 GB).
+demucs>=4.0.1
+soundfile
+# Ab torchaudio 2.9 laufen load/save nur noch ueber torchcodec - demucs 4.0.1
+# kennt das nicht und bricht ab. Bis demucs nachzieht: bei 2.8 bleiben.
+torch<2.9
+torchaudio<2.9

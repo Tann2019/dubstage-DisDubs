@@ -67,8 +67,9 @@ def transcribe(media, language, model="large-v3", device="cpu", progress=None):
         from faster_whisper import WhisperModel
         from faster_whisper.tokenizer import _LANGUAGE_CODES
     except ImportError as exc:
-        raise RuntimeError("Speech recognition requires faster-whisper. Run Setup.bat "
-                           "and choose speech recognition, or install with: "
+        raise RuntimeError("Speech recognition requires faster-whisper. Run the setup "
+                           "again (Setup.exe or Setup.bat) and choose speech "
+                           "recognition, or install with: "
                            "py -m pip install -r requirements-transcription.txt") from exc
     if language not in _LANGUAGE_CODES:
         raise ValueError("Unsupported spoken language code: %s" % language)

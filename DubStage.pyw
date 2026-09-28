@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dubforge_core as pc
 import dubstage_core as ds
 import updater as upd
+import appwin
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CFG_PATH = os.path.join(APP_DIR, "dubstage_settings.json")
@@ -96,11 +97,12 @@ T = {
     "start":      ("Loslegen", "Start"),
     "loading":    ("Pack wird vorbereitet ...", "Preparing the pack ..."),
     "no_sd":      ("Mikrofon nicht nutzbar: Paket 'sounddevice' fehlt. "
-                   "Bitte Setup.bat ausfuehren.",
+                   "Bitte das Setup erneut ausfuehren.",
                    "Microphone unavailable: package 'sounddevice' missing. "
-                   "Please run Setup.bat."),
-    "no_pil":     ("Videoanzeige braucht 'Pillow'. Bitte Setup.bat ausfuehren.",
-                   "Video display needs 'Pillow'. Please run Setup.bat."),
+                   "Please run the setup again."),
+    "no_pil":     ("Videoanzeige braucht 'Pillow'. Bitte das Setup erneut "
+                   "ausfuehren.",
+                   "Video display needs 'Pillow'. Please run the setup again."),
 
     "menu":       ("Menue", "Menu"),
     "line_of":    ("Zeile %d / %d", "Line %d / %d"),
@@ -276,6 +278,7 @@ class Game(tk.Tk):
 
     def __init__(self):
         super().__init__()
+        appwin.set_icon(self, "DubStage")
         self.cfg = load_cfg()
         set_lang(self.cfg.get("lang", "de"))
         self.title(t("title"))
@@ -1477,10 +1480,18 @@ class Game(tk.Tk):
     #  FINALE
     # ==================================================================
     def build_finale(self):
-        self.screen = "finale"
         self._set_phase("idle")
         self._stop_audio()
-        self.mix = ds.render_dub(self.pack)
+        try:
+            mix = ds.render_dub(self.pack)
+        except Exception as ex:
+            # z.B. Video ohne Tonspur und kein Backing Track - dann auf der
+            # Buehne bleiben, statt mit halb gezeichnetem Finale zu haengen.
+            traceback.print_exc()
+            messagebox.showerror(t("err"), str(ex))
+            return
+        self.screen = "finale"
+        self.mix = mix
         self._clear_canvas()
         self._backdrop()
         cv = self.cv
@@ -1613,17 +1624,30 @@ class Game(tk.Tk):
             self.b_save.set_enabled(True)
             self.cv.itemconfigure(self.fin_msg, text="", fill=DIM)
             messagebox.showinfo(t("title"), t("saved", path))
-        self._run_bg(work, done)
+
+        def failed(msg):
+            # Im Finale bleiben: zurueck ins Menue hiesse, alle Aufnahmen
+            # dieser Runde zu verlieren - nur weil z.B. die Datei gesperrt war.
+            if self.screen == "finale":
+                self.b_save.set_enabled(True)
+                self.cv.itemconfigure(self.fin_msg, text="", fill=DIM)
+            messagebox.showerror(t("err"), msg)
+        self._run_bg(work, done, on_error=failed)
 
     # ------------------------------------------------------- Hintergrund
-    def _run_bg(self, fn, on_done):
+    def _run_bg(self, fn, on_done, on_error=None):
         def wrapper():
             try:
                 fn()
                 self.msgq.put(("done", on_done))
             except Exception as ex:
                 traceback.print_exc()
-                self.msgq.put(("error", str(ex)))
+                if on_error is not None:
+                    # ex verschwindet am Ende des except-Blocks - Text binden.
+                    msg = str(ex)
+                    self.msgq.put(("done", lambda: on_error(msg)))
+                else:
+                    self.msgq.put(("error", str(ex)))
         threading.Thread(target=wrapper, daemon=True).start()
 
     def _pump(self):
@@ -1673,4 +1697,5 @@ class Game(tk.Tk):
 
 
 if __name__ == "__main__":
+    appwin.set_app_id("DubStage")
     Game().mainloop()

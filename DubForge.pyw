@@ -25,6 +25,7 @@ from tkinter import ttk, filedialog, messagebox, simpledialog
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dubforge_core as pc
 import updater as upd
+import appwin
 import transcription as tr
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -99,10 +100,10 @@ T = {
                      "update it first if downloads fail."),
     "st_upd":       ("Aktualisiere yt-dlp ...", "Updating yt-dlp ..."),
     "upd_done":     ("Jetzt: yt-dlp %s", "Now: yt-dlp %s"),
-    "upd_fail":     ("Aktualisierung hat nichts geaendert. Im Terminal:\n"
-                     "py -m pip install --upgrade yt-dlp",
+    "ytdlp_fail":   ("Aktualisierung hat nichts geaendert. Im Terminal:\n"
+                     "\"%s\" -m pip install --upgrade yt-dlp",
                      "The update changed nothing. In a terminal:\n"
-                     "py -m pip install --upgrade yt-dlp"),
+                     "\"%s\" -m pip install --upgrade yt-dlp"),
     "upd_same":     ("Die Version ist unveraendert: %s\n\n"
                      "Meist liegt eine aeltere yt-dlp.exe im PATH und hat "
                      "Vorrang vor der Installation, die pip erneuert hat. "
@@ -167,8 +168,8 @@ T = {
 
     # --- Status / Log
     "ready":        ("Bereit.", "Ready."),
-    "missing":      ("FEHLT: %s  ->  bitte Setup.bat ausfuehren.",
-                     "MISSING: %s  ->  please run Setup.bat."),
+    "missing":      ("FEHLT: %s  ->  bitte das Setup erneut ausfuehren.",
+                     "MISSING: %s  ->  please run the setup again."),
     "ff_ready":     ("ffmpeg bereit (Theora: %s, Vorbis: %s)",
                      "ffmpeg ready (Theora: %s, Vorbis: %s)"),
     "yes":          ("ja", "yes"),
@@ -356,6 +357,7 @@ class App(tk.Tk):
 
     def __init__(self):
         super().__init__()
+        appwin.set_icon(self, "DubForge")
         self.cfg = load_cfg()
         set_lang(self.cfg.get("lang", "de"))
 
@@ -1131,10 +1133,22 @@ class App(tk.Tk):
             pass
 
     def _check_tools(self):
+        # Im Hintergrund: yt-dlp und ffmpeg mehrfach zu starten dauert ein
+        # paar Sekunden - so lange soll das Fenster nicht auf sich warten
+        # lassen. _log geht ueber die Warteschlange, ist also threadsicher.
+        def work():
+            try:
+                self._check_tools_work()
+            except Exception:
+                self._log(traceback.format_exc())
+        threading.Thread(target=work, daemon=True).start()
+
+    def _check_tools_work(self):
         missing = []
         if not pc.find_tool("ffmpeg"):
             missing.append("ffmpeg")
-        if not pc.ytdlp():
+        yt = pc.ytdlp()
+        if not yt:
             missing.append("yt-dlp")
         if missing:
             self._log(t("missing", ", ".join(missing)))
@@ -1143,15 +1157,15 @@ class App(tk.Tk):
             self._log(t("ff_ready",
                         t("yes") if th else t("no_caps"),
                         t("yes") if vo else t("no_caps")))
+        if not yt:
+            return
         ver, age = pc.ytdlp_version()
         self._ytdlp_age = age
         if ver and age is not None:
-            yt = pc.ytdlp() or []
             where = yt[0] if len(yt) == 1 else os.path.dirname(sys.executable)
             self._log(t("ytdlp_ver", ver, age) + "   -   " + str(where))
             if age > 60:
                 self._log(t("ytdlp_old", age))
-
 
     def update_ytdlp(self):
         """Holt die aktuelle yt-dlp-Version nach."""
@@ -1175,7 +1189,8 @@ class App(tk.Tk):
                 self._log(t("upd_same", ver))
                 messagebox.showwarning(t("title"), t("upd_same", ver))
             else:
-                messagebox.showwarning(t("title"), t("upd_fail"))
+                messagebox.showwarning(t("title"),
+                                       t("ytdlp_fail", pc.console_python()))
         self._bg(work, on_done=done)
 
     # -------------------------------------------------- Thread-Kommunikation
@@ -2048,4 +2063,5 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
+    appwin.set_app_id("DubForge")
     App().mainloop()

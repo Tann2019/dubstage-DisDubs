@@ -37,11 +37,34 @@
 
 ## Install
 
-1. Download the files into one folder
-2. Run `Setup.bat` — installs the Python packages and fetches ffmpeg into `tools/`
-3. `Start DubForge.bat` to build a pack, `Start DubStage.bat` to record
+1. Download **`DubStage-Setup-<version>.exe`** from the [latest release](https://github.com/xmrius/dubstage/releases/latest)
+2. Run it — no admin rights and no Python installation needed
+3. Start **DubForge** or **DubStage** from the Start menu or the desktop
 
-Requires Windows and Python 3.9+. The setup offers [Demucs](https://github.com/adefossez/demucs) for vocal separation; it pulls in PyTorch (several hundred MB up to ~2 GB) and is optional — without it you simply get no backing track.
+The setup brings its own Python with every package the tools need, downloads
+ffmpeg, and creates Start-menu (and optionally desktop) shortcuts. It installs
+per user into `%LOCALAPPDATA%\Programs\DubStage`; uninstall it from
+*Settings → Apps* like any other program — you are asked whether your packs and
+recordings should go too.
+
+Two parts are optional and can be picked in the setup (or added later by
+running it again): [Demucs](https://github.com/adefossez/demucs) for vocal
+separation, which pulls in PyTorch (up to ~2 GB) — without it you simply get no
+backing track — and speech recognition for automatic captions.
+
+Windows SmartScreen may warn about the setup because it is not code-signed:
+*More info → Run anyway*.
+
+### Without the installer
+
+For development, or if you prefer your own Python (3.9+): put the files into one
+folder, run `Setup.bat`, then `Start DubForge.bat` / `Start DubStage.bat`.
+
+### Building the setup yourself
+
+`installer\build.ps1` builds `dist\DubStage-Setup-<version>.exe` on Windows
+with [Inno Setup](https://jrsoftware.org/isinfo.php) 6.3+. GitHub Actions runs
+the same script on every push and attaches the setup to each published release.
 
 ## Quick start
 
@@ -104,7 +127,8 @@ The interface is available in German and English, switchable at runtime in the t
 
 ## Automatic captions
 
-Choose the optional speech-recognition installation in `Setup.bat`, or run
+Choose the optional speech recognition in the setup (run it again to add it
+later), or with your own Python run
 `py -m pip install -r requirements-transcription.txt`.
 
 After **Load and analyse**, enter the spoken language code (`fr` for French,
