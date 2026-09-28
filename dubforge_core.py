@@ -39,15 +39,15 @@ def set_lang(code):
 _MSG = {
     "no_ffmpeg": (
         "ffmpeg wurde nicht gefunden.\n\n"
-        "Bitte einmal Setup.bat ausfuehren, oder ffmpeg manuell installieren.",
+        "Bitte das Setup erneut ausführen, oder ffmpeg manuell installieren.",
         "ffmpeg was not found.\n\n"
-        "Please run Setup.bat once, or install ffmpeg manually."),
+        "Please run the setup again, or install ffmpeg manually."),
     "no_ffprobe": (
-        "ffprobe wurde nicht gefunden. Bitte Setup.bat ausfuehren.",
-        "ffprobe was not found. Please run Setup.bat."),
+        "ffprobe wurde nicht gefunden. Bitte das Setup erneut ausführen.",
+        "ffprobe was not found. Please run the setup again."),
     "no_ytdlp": (
-        "yt-dlp wurde nicht gefunden. Bitte Setup.bat ausfuehren.",
-        "yt-dlp was not found. Please run Setup.bat."),
+        "yt-dlp wurde nicht gefunden. Bitte das Setup erneut ausführen.",
+        "yt-dlp was not found. Please run the setup again."),
     "cmd_failed": (
         "Befehl fehlgeschlagen (%s):\n%s",
         "Command failed (%s):\n%s"),
@@ -59,9 +59,9 @@ _MSG = {
         "Demucs did not produce a vocals file."),
     "no_theora": (
         "Dieser ffmpeg kann kein OGV schreiben (libtheora/libvorbis fehlt).\n"
-        "Bitte Setup.bat ausfuehren oder MP4 als Format waehlen.",
+        "Bitte das Setup erneut ausführen oder MP4 als Format wählen.",
         "This ffmpeg cannot write OGV (libtheora/libvorbis missing).\n"
-        "Please run Setup.bat or choose MP4 as the format."),
+        "Please run the setup again or choose MP4 as the format."),
     "bad_time": (
         "Zeitangabe nicht verstanden: %r",
         "Could not understand the time value: %r"),
@@ -71,6 +71,9 @@ _MSG = {
     "pack_exists": (
         "Pack existiert bereits: %s",
         "Pack already exists: %s"),
+    "pack_inside": (
+        "Der Zielordner liegt im Pack selbst: %s",
+        "The target folder is inside the pack itself: %s"),
     "file_missing": (
         "Datei nicht gefunden: %s",
         "File not found: %s"),
@@ -89,12 +92,12 @@ _MSG = {
     "dl_section_fail": (
         "Der Ausschnitt-Download ging nicht. Das passiert, wenn ffmpeg die\n"
         "Videodaten selbst holen soll und dabei abgewiesen wird. Ich lade\n"
-        "jetzt das ganze Video und schneide es hier - das dauert laenger.",
+        "jetzt das ganze Video und schneide es hier - das dauert länger.",
         "Downloading just the section failed. That happens when ffmpeg has to\n"
         "fetch the video data itself and gets refused. Downloading the whole\n"
         "video now and cutting it here - this takes longer."),
     "dl_trim_local": (
-        "Download fertig, schneide auf die gewaehlte Zeitspanne ...",
+        "Download fertig, schneide auf die gewählte Zeitspanne ...",
         "Download finished, cutting to the chosen time span ..."),
     "ytdlp_at": (
         "Benutztes yt-dlp: %s",
@@ -103,16 +106,16 @@ _MSG = {
         "Benutztes yt-dlp: Modul in %s",
         "yt-dlp in use: module in %s"),
     "ytdlp_self": (
-        "Eigenstaendige Datei - erneuert sich selbst.",
+        "Eigenständige Datei - erneuert sich selbst.",
         "Standalone file - updating itself."),
     "ytdlp_wrap": (
-        "Das ist ein pip-Starter, kein eigenstaendiges Programm. "
+        "Das ist ein pip-Starter, kein eigenständiges Programm. "
         "Ich nehme pip aus derselben Installation: %s",
         "This is a pip launcher, not a standalone build. "
         "Using pip from the same installation: %s"),
     "ytdlp_shadow": (
         "Achtung: pip hat %s aktualisiert, benutzt wird aber %s.\n"
-        "Die aeltere Datei liegt im PATH und hat Vorrang - entfernen oder "
+        "Die ältere Datei liegt im PATH und hat Vorrang - entfernen oder "
         "erneuern, sonst bleibt der alte Stand aktiv.",
         "Note: pip updated %s, but %s is what actually runs.\n"
         "The older file sits in PATH and wins - remove or update it, "
@@ -218,6 +221,16 @@ def _python_beside(exe):
     return None
 
 
+def console_python():
+    """Der laufende Interpreter als python.exe - fuer Hinweise im Terminal."""
+    exe = sys.executable or "python"
+    if os.path.basename(exe).lower() == "pythonw.exe":
+        cand = os.path.join(os.path.dirname(exe), "python.exe")
+        if os.path.isfile(cand):
+            return cand
+    return exe
+
+
 def update_ytdlp(log=None):
     """
     Aktualisiert genau das yt-dlp, das beim Download auch wirklich laeuft.
@@ -260,7 +273,7 @@ def update_ytdlp(log=None):
     return ytdlp_version()
 
 
-def run(cmd, log=None, check=True):
+def run(cmd, log=None, check=True, env=None):
     """Fuehrt ein Kommando aus und streamt die Ausgabe an log(text)."""
     if log:
         log("$ " + " ".join(os.path.basename(str(c)) if i == 0 else str(c)
@@ -268,7 +281,7 @@ def run(cmd, log=None, check=True):
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         universal_newlines=True, encoding="utf-8", errors="replace",
-        creationflags=_NOWINDOW,
+        creationflags=_NOWINDOW, env=env,
     )
     tail = []
     for line in proc.stdout:
@@ -434,7 +447,7 @@ def trim_local(path, start, end, workdir, log=None):
     cmd += ["-i", path]
     if end is not None:
         cmd += ["-t", "%.3f" % want]
-    cmd += ["-map", "0:v:0", "-map", "0:a:0?", "-c", "copy",
+    cmd += ["-map", "0:v:0?", "-map", "0:a:0?", "-c", "copy",
             "-avoid_negative_ts", "make_zero", "-reset_timestamps", "1", out]
     try:
         run(cmd, log=log)
@@ -455,7 +468,7 @@ def trim_local(path, start, end, workdir, log=None):
     cmd += ["-i", path]
     if end is not None:
         cmd += ["-t", "%.3f" % max(0.05, float(end) - float(start or 0))]
-    cmd += ["-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-crf", "18",
+    cmd += ["-map", "0:v:0?", "-map", "0:a:0?", "-c:v", "libx264", "-crf", "18",
             "-preset", "veryfast", "-c:a", "pcm_s16le",
             "-avoid_negative_ts", "make_zero", out]
     run(cmd, log=log)
@@ -480,7 +493,14 @@ def separate_vocals(wav_path, workdir, log=None, model="htdemucs"):
     os.makedirs(outdir, exist_ok=True)
     cmd = [sys.executable, "-m", "demucs", "--two-stems", "vocals",
            "-n", model, "-o", outdir, wav_path]
-    run(cmd, log=log)
+    # Demucs liest Audio ueber ffmpeg/ffprobe aus dem PATH. Liegen die nur in
+    # tools/, faellt es auf torchaudio zurueck - und das scheitert je nach
+    # Version. Also tools/ vorn in den PATH des Kindprozesses haengen.
+    env = dict(os.environ)
+    ff = find_tool("ffmpeg")
+    if ff:
+        env["PATH"] = os.path.dirname(ff) + os.pathsep + env.get("PATH", "")
+    run(cmd, log=log, env=env)
     stem = os.path.splitext(os.path.basename(wav_path))[0]
     for root, _dirs, files in os.walk(outdir):
         if "vocals.wav" in files and os.path.basename(root) == stem:
@@ -815,9 +835,20 @@ def cv_numbering(clips):
 # Dateinamen / file names
 # --------------------------------------------------------------------------
 
+# Namen, die Windows fuer Geraete reserviert - als Datei nicht anlegbar.
+_RESERVED = {"CON", "PRN", "AUX", "NUL"} | \
+    {"COM%d" % i for i in range(1, 10)} | {"LPT%d" % i for i in range(1, 10)}
+
+
 def safe_name(text, fallback="clip"):
     text = re.sub(r"[^\w\-. ]+", "", (text or "").strip(), flags=re.UNICODE)
     text = re.sub(r"\s+", "_", text)
+    # "." und ".." waeren als Packname der packs-Ordner bzw. der
+    # Programmordner selbst - und der wird vor dem Bauen geloescht.
+    # Punkte am Ende schneidet Windows ohnehin still ab.
+    text = text.strip(".")
+    if text.split(".")[0].upper() in _RESERVED:
+        text = "_" + text
     return text or fallback
 
 
@@ -899,7 +930,15 @@ def copy_pack(src_folder, target_dir, overwrite=True):
     """Kopiert einen fertigen Pack in einen beliebigen Zielordner."""
     if not os.path.isdir(target_dir):
         raise RuntimeError(M("no_target", target_dir))
+    src = os.path.normcase(os.path.realpath(src_folder))
     dest = os.path.join(target_dir, os.path.basename(src_folder))
+    real = os.path.normcase(os.path.realpath(dest))
+    if real == src:
+        # Ziel ist der Pack selbst (z.B. packs/ als Ziel gewaehlt) - loeschen
+        # und neu kopieren wuerde ihn vernichten.
+        return dest
+    if real.startswith(src + os.sep):
+        raise RuntimeError(M("pack_inside", target_dir))
     if os.path.exists(dest):
         if not overwrite:
             raise RuntimeError(M("pack_exists", dest))

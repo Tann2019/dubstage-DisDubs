@@ -36,7 +36,7 @@ echo.
 rem ---------------------------------------------------------- Pakete
 echo [2/4] Python-Pakete installieren ^(numpy, yt-dlp, pillow, sounddevice^) ...
 %PY% -m pip install --upgrade pip --quiet
-%PY% -m pip install --upgrade numpy yt-dlp pillow sounddevice || (
+%PY% -m pip install --upgrade -r requirements.txt || (
   echo [!] Installation fehlgeschlagen. Internet pruefen.
   pause & exit /b 1
 )
@@ -50,7 +50,7 @@ choice /c JN /n /m "       Jetzt installieren? [J/N] "
 if errorlevel 2 (
   echo       uebersprungen - die App laeuft dann ohne Stimmen-Trennung.
 ) else (
-  %PY% -m pip install --upgrade demucs soundfile
+  %PY% -m pip install --upgrade -r requirements-demucs.txt
   if errorlevel 1 (
     echo [!] Demucs konnte nicht installiert werden.
     echo     Die App funktioniert trotzdem, nur ohne Vocal-Trennung.

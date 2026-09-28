@@ -25,22 +25,50 @@ from tkinter import ttk, filedialog, messagebox, simpledialog
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dubforge_core as pc
 import updater as upd
+import appwin
 import transcription as tr
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(APP_DIR, "packs")
 CFG_PATH = os.path.join(APP_DIR, "dubforge_settings.json")
 
-BG = "#1e1f26"
-BG2 = "#272935"
-FG = "#e7e7ef"
+# Farben wie in DubStage, damit beide Werkzeuge zusammengehoeren.
+PAGE = "#0e1019"         # Fensterhintergrund / window background
+PAGE_HI = "#1a1e30"
+CARD = "#161a29"         # Karten je Schritt / step cards
+CARD_HI = "#20253a"
+FIELD = "#0f121d"        # Eingabefelder, Tabelle, Protokoll
+ROW_ALT = "#131727"
+EDGE = "#2a3050"
+EDGE_HI = "#3a4270"
+BTN = "#252a42"
+BTN_HI = "#30375a"
+SCROLL = "#2c3250"
+SCROLL_HI = "#3d4570"
+FG = "#eef1ff"
+DIM = "#8a92b4"
+MUTED = "#555c7c"
+LOG_FG = "#8f98bd"
 ACC = "#7c5cff"
-ACC2 = "#43d69a"
-WAVE = "#6f7ba8"
+ACC_HI = "#9b83ff"
+ACC2 = "#25d3a4"
+ACC2_HI = "#4ee5bb"
+BG = PAGE                # Altname / legacy name
+BG2 = CARD
+
+WAVE_BG = "#0b0d16"
+WAVE = "#3c4470"         # Welle ausserhalb der Clips
+WAVE_IN = "#b9adff"      # Welle innerhalb eines Clips
+CLIP_FILL = "#1f1a45"
+CLIP_EDGE = "#4a3fa0"
+CLIP_SEL = "#33287a"
 BAN = "#332e5e"          # Update-Banner / update banner
 BAN_TXT = "#241f47"
-CLIP_FILL = "#2f4a6d"
-CLIP_SEL = "#7c5cff"
+
+if os.name == "nt":
+    UI_FONT, UI_FONT_SB, MONO_FONT = "Segoe UI", "Segoe UI Semibold", "Consolas"
+else:
+    UI_FONT, UI_FONT_SB, MONO_FONT = "DejaVu Sans", "DejaVu Sans", "DejaVu Sans Mono"
 
 
 # ==========================================================================
@@ -61,14 +89,14 @@ def set_lang(code):
 T = {
     "asr_language": ("Gesprochene Sprache (Code):", "Spoken language (code):"),
     "asr_model": ("Modell:", "Model:"),
-    "asr_device": ("Geraet:", "Device:"),
+    "asr_device": ("Gerät:", "Device:"),
     "asr_generate": ("Untertitel generieren", "Generate captions"),
     "asr_replace": ("Vorhandene ersetzen", "Replace existing"),
-    "asr_hint": ("fr = Franzoesisch, en = Englisch, de = Deutsch. Erstmalig Modell-Download; Audio bleibt lokal.\n"
-                 "SRT/VTT enthalten das gesamte Transkript. Clip-Korrekturen aendern nur den Text in DubStage.",
+    "asr_hint": ("fr = Französisch, en = Englisch, de = Deutsch. Erstmalig Modell-Download; Audio bleibt lokal.\n"
+                 "SRT/VTT enthalten das gesamte Transkript. Clip-Korrekturen ändern nur den Text in DubStage.",
                  "fr = French, en = English, de = German. First use downloads the model; audio stays local.\n"
                  "SRT/VTT contain the full transcript. Clip corrections only change the text in DubStage."),
-    "asr_language_required": ("Bitte Sprachcode eingeben, z.B. fr fuer Franzoesisch.",
+    "asr_language_required": ("Bitte Sprachcode eingeben, z.B. fr für Französisch.",
                               "Enter a spoken language code, e.g. fr for French."),
     "asr_empty": ("Keine Sprache zugeordnet: %s", "No recognized speech mapped to: %s"),
     "asr_error": ("Spracherkennung fehlgeschlagen. Vorhandene Untertitel bleiben erhalten.\n%s",
@@ -78,12 +106,14 @@ T = {
     "lang_label":   ("Sprache:", "Language:"),
 
     # --- Schritt 1
-    "s1":           (" 1. Woraus soll der Pack werden? ",
-                     " 1. What should the pack be made from? "),
+    "tagline":      ("Dub-Packs aus Videos bauen", "Build dub packs from video"),
+    "s1":           ("Quelle", "Source"),
+    "s1_hint":      ("Woraus soll der Pack werden?",
+                     "What should the pack be made from?"),
     "src_url":      ("YouTube-Link", "YouTube link"),
     "src_file":     ("Datei auf der Platte (MP4/MKV/...)",
                      "File on disk (MP4/MKV/...)"),
-    "pick_file":    ("Datei waehlen ...", "Choose file ..."),
+    "pick_file":    ("Datei wählen ...", "Choose file ..."),
     "from":         ("Von:", "From:"),
     "to":           ("Bis:", "To:"),
     "time_hint":    ("(z.B. 1:30  oder  0:02:15.5  -  leer = alles)",
@@ -93,18 +123,18 @@ T = {
     "analyze":      ("Laden und analysieren", "Load and analyse"),
     "upd_ytdlp":    ("yt-dlp aktualisieren", "Update yt-dlp"),
     "ytdlp_ver":    ("yt-dlp %s (%d Tage alt)", "yt-dlp %s (%d days old)"),
-    "ytdlp_old":    ("yt-dlp ist %d Tage alt. YouTube aendert staendig etwas - "
+    "ytdlp_old":    ("yt-dlp ist %d Tage alt. YouTube ändert ständig etwas - "
                      "bei Download-Problemen zuerst aktualisieren.",
                      "yt-dlp is %d days old. YouTube keeps changing things - "
                      "update it first if downloads fail."),
     "st_upd":       ("Aktualisiere yt-dlp ...", "Updating yt-dlp ..."),
     "upd_done":     ("Jetzt: yt-dlp %s", "Now: yt-dlp %s"),
-    "upd_fail":     ("Aktualisierung hat nichts geaendert. Im Terminal:\n"
-                     "py -m pip install --upgrade yt-dlp",
+    "ytdlp_fail":   ("Aktualisierung hat nichts geändert. Im Terminal:\n"
+                     "\"%s\" -m pip install --upgrade yt-dlp",
                      "The update changed nothing. In a terminal:\n"
-                     "py -m pip install --upgrade yt-dlp"),
-    "upd_same":     ("Die Version ist unveraendert: %s\n\n"
-                     "Meist liegt eine aeltere yt-dlp.exe im PATH und hat "
+                     "\"%s\" -m pip install --upgrade yt-dlp"),
+    "upd_same":     ("Die Version ist unverändert: %s\n\n"
+                     "Meist liegt eine ältere yt-dlp.exe im PATH und hat "
                      "Vorrang vor der Installation, die pip erneuert hat. "
                      "Welche Datei benutzt wird, steht im Protokoll - diese "
                      "Datei entfernen oder direkt erneuern.",
@@ -114,18 +144,17 @@ T = {
                      "The log shows which file is in use - remove or update "
                      "that file."),
     "dl_hint":      ("Der Download ist fehlgeschlagen. yt-dlp ist %d Tage alt - "
-                     "das koennte die Ursache sein, wenn oben ein Fehler beim "
+                     "das könnte die Ursache sein, wenn oben ein Fehler beim "
                      "Auslesen der Seite steht.",
                      "The download failed. yt-dlp is %d days old - that may be "
                      "the cause if the log shows an error while reading the "
                      "page."),
-    "demucs_hint":  ("Erster Lauf mit Demucs dauert laenger (Modell wird geladen).",
+    "demucs_hint":  ("Erster Lauf mit Demucs dauert länger (Modell wird geladen).",
                      "The first Demucs run takes longer (the model is downloaded)."),
 
     # --- Schritt 2
-    "s2":           (" 2. Clips pruefen und anpassen ",
-                     " 2. Review and adjust the clips "),
-    "canvas_empty": ("Noch nichts geladen  -  oben Quelle waehlen und auf "
+    "s2":           ("Clips prüfen und anpassen", "Review and adjust the clips"),
+    "canvas_empty": ("Noch nichts geladen  -  oben Quelle wählen und auf "
                      "'Laden und analysieren' klicken",
                      "Nothing loaded yet  -  choose a source above and click "
                      "'Load and analyse'"),
@@ -133,42 +162,42 @@ T = {
     "zoom_out":     ("Zoom -", "Zoom -"),
     "zoom_all":     ("Alles zeigen", "Fit all"),
     "mouse_hint":   ("Ziehen = neuer Clip   |   Rand ziehen = trimmen   |   "
-                     "Doppelklick = anhoeren",
+                     "Doppelklick = anhören",
                      "Drag = new clip   |   drag an edge = trim   |   "
                      "double-click = listen"),
     "col_nr":       ("#", "#"),
     "col_name":     ("Name", "Name"),
     "col_start":    ("Start", "Start"),
     "col_end":      ("Ende", "End"),
-    "col_len":      ("Laenge", "Length"),
+    "col_len":      ("Länge", "Length"),
     "col_caption":  ("Untertitel", "Subtitle"),
     "caption":      ("Untertitel:", "Subtitle:"),
-    "caption_hint": ("Enter = speichern und zum naechsten Clip",
+    "caption_hint": ("Enter = speichern und zum nächsten Clip",
                      "Enter = save and go to the next clip"),
-    "btn_play":     ("Anhoeren", "Play"),
+    "btn_play":     ("Anhören", "Play"),
     "btn_stop":     ("Stopp", "Stop"),
     "btn_rename":   ("Umbenennen", "Rename"),
     "btn_split":    ("Teilen", "Split"),
-    "btn_delete":   ("Loeschen", "Delete"),
+    "btn_delete":   ("Löschen", "Delete"),
     "sensitivity":  ("Empfindlichkeit", "Sensitivity"),
-    "maxlen":       ("Max. Cliplaenge (s)", "Max. clip length (s)"),
+    "maxlen":       ("Max. Cliplänge (s)", "Max. clip length (s)"),
     "redetect":     ("Neu erkennen", "Detect again"),
 
     # --- Schritt 3
-    "s3":           (" 3. Pack bauen ", " 3. Build the pack "),
+    "s3":           ("Pack bauen", "Build the pack"),
     "pack_name":    ("Pack-Name:", "Pack name:"),
-    "is_dub":       ("Mit Video (fuer DubStage)", "With video (for DubStage)"),
-    "vheight":      ("Video-Hoehe:", "Video height:"),
+    "is_dub":       ("Mit Video (für DubStage)", "With video (for DubStage)"),
+    "vheight":      ("Video-Höhe:", "Video height:"),
     "target_dir":   ("Zielordner:", "Target folder:"),
-    "browse":       ("Waehlen", "Browse"),
+    "browse":       ("Wählen", "Browse"),
     "build":        ("Pack bauen", "Build pack"),
     "install":      ("In Zielordner kopieren", "Copy to target folder"),
-    "open_out":     ("Pack-Ordner oeffnen", "Open pack folder"),
+    "open_out":     ("Pack-Ordner öffnen", "Open pack folder"),
 
     # --- Status / Log
     "ready":        ("Bereit.", "Ready."),
-    "missing":      ("FEHLT: %s  ->  bitte Setup.bat ausfuehren.",
-                     "MISSING: %s  ->  please run Setup.bat."),
+    "missing":      ("FEHLT: %s  ->  bitte das Setup erneut ausführen.",
+                     "MISSING: %s  ->  please run the setup again."),
     "ff_ready":     ("ffmpeg bereit (Theora: %s, Vorbis: %s)",
                      "ffmpeg ready (Theora: %s, Vorbis: %s)"),
     "yes":          ("ja", "yes"),
@@ -184,35 +213,35 @@ T = {
     "st_done_an":   ("Fertig analysiert.", "Analysis finished."),
     "st_clip":      ("Exportiere Clip %d/%d ...", "Exporting clip %d/%d ..."),
     "st_backing":   ("Schreibe _backing_track ...", "Writing _backing_track ..."),
-    "st_ogv":       ("Konvertiere Video (dauert am laengsten) ...",
+    "st_ogv":       ("Konvertiere Video (dauert am längsten) ...",
                      "Converting the video (this takes the longest) ..."),
     "st_built":     ("Pack gebaut: %s", "Pack built: %s"),
-    "log_len":      ("Laenge: %.2f s", "Length: %.2f s"),
+    "log_len":      ("Länge: %.2f s", "Length: %.2f s"),
     "log_voc_ok":   ("Vocals getrennt.", "Vocals separated."),
     "log_voc_fail": ("Demucs fehlgeschlagen (%s) - nutze den Originalton.",
                      "Demucs failed (%s) - falling back to the original audio."),
     "log_found":    ("%d Clips gefunden.", "Found %d clips."),
     "log_redet":    ("Neu erkannt: %d Clips.", "Detected again: %d clips."),
     "log_copied":   ("Kopiert nach: %s", "Copied to: %s"),
-    "log_noplay":   ("Wiedergabe nicht moeglich: %s", "Playback not possible: %s"),
+    "log_noplay":   ("Wiedergabe nicht möglich: %s", "Playback not possible: %s"),
 
     # --- Dialoge
     "dlg_busy_t":   ("Moment", "One moment"),
-    "dlg_busy":     ("Es laeuft gerade schon etwas.",
+    "dlg_busy":     ("Es läuft gerade schon etwas.",
                      "Something is already running."),
     "dlg_err":      ("Fehler", "Error"),
     "dlg_missing_t": ("Fehlt", "Missing"),
     "dlg_no_src":   ("Bitte einen Link oder eine Datei angeben.",
                      "Please provide a link or a file."),
     "dlg_time_t":   ("Zeitangabe", "Time value"),
-    "dlg_time_order": ("'Bis' muss groesser als 'Von' sein.",
+    "dlg_time_order": ("'Bis' muss größer als 'Von' sein.",
                        "'To' must be greater than 'From'."),
 
     "dlg_first_t":  ("Erst analysieren", "Analyse first"),
     "dlg_first":    ("Bitte zuerst eine Quelle laden und analysieren.",
                      "Please load and analyse a source first."),
     "dlg_rename_t": ("Umbenennen", "Rename"),
-    "dlg_rename":   ("Name fuer diesen Clip:", "Name for this clip:"),
+    "dlg_rename":   ("Name für diesen Clip:", "Name for this clip:"),
     "dlg_noclips_t": ("Keine Clips", "No clips"),
     "dlg_noclips":  ("Es gibt noch keine Clips.", "There are no clips yet."),
     "dlg_done_t":   ("Fertig", "Finished"),
@@ -222,29 +251,29 @@ T = {
     "dlg_nobuild":  ("Bitte zuerst 'Pack bauen'.", "Please use 'Build pack' first."),
     "dlg_notgt_t":  ("Zielordner fehlt", "Target folder missing"),
     "dlg_notgt":    ("Es ist kein Zielordner gesetzt.\n\n"
-                     "Oben einen Ordner waehlen, in den der fertige Pack "
+                     "Oben einen Ordner wählen, in den der fertige Pack "
                      "kopiert werden soll.",
                      "No target folder is set.\n\n"
                      "Choose a folder above to copy the finished pack into."),
     "dlg_copyfail": ("Kopieren fehlgeschlagen", "Copying failed"),
     "dlg_copied_t": ("Kopiert", "Copied"),
-    "dlg_copied":   ("Kopiert nach:\n%s\n\nOrdner oeffnen?",
+    "dlg_copied":   ("Kopiert nach:\n%s\n\nOrdner öffnen?",
                      "Copied to:\n%s\n\nOpen the folder?"),
 
-    "dlg_video_t":  ("Video oder Audio waehlen", "Choose video or audio"),
+    "dlg_video_t":  ("Video oder Audio wählen", "Choose video or audio"),
     "dlg_filter":   ("Video/Audio", "Video/audio"),
     "dlg_allfiles": ("Alle Dateien", "All files"),
-    "dlg_target_t": ("Zielordner waehlen", "Choose the target folder"),
+    "dlg_target_t": ("Zielordner wählen", "Choose the target folder"),
 
     # --- Dateien im Pack
-    "ts_head":      ("# %s\n# Uebersicht der Clips\n#\n"
-                     "# Datei | Startzeit im Video (Sekunden) | Laenge | "
+    "ts_head":      ("# %s\n# Übersicht der Clips\n#\n"
+                     "# Datei | Startzeit im Video (Sekunden) | Länge | "
                      "Untertitel\n",
                      "# %s\n# Overview of the clips\n#\n"
                      "# File | start time in the video (seconds) | length | "
                      "subtitle\n"),
     "readme":       ("Pack: %s\nTyp: %s\nClips: %d\n\n"
-                     "Mit DubStage oeffnen und die Szene selbst einsprechen.\n",
+                     "Mit DubStage öffnen und die Szene selbst einsprechen.\n",
                      "Pack: %s\nType: %s\nClips: %d\n\n"
                      "Open it in DubStage and dub the scene yourself.\n"),
     "readme_dub":   ("\nDie Startzeit jedes Clips steht im Dateinamen\n"
@@ -273,9 +302,9 @@ T = {
     "char_hint":    ("Name des Sprechers - bestimmt Dateinamen und Bild",
                      "Name of the speaker - drives file name and image"),
     "btn_frame":    ("Bild aus Szene", "Grab image"),
-    "frame_none":   ("Erst einen Clip waehlen und eine Figur eintragen.",
+    "frame_none":   ("Erst einen Clip wählen und eine Figur eintragen.",
                      "Select a clip and enter a character first."),
-    "frame_ok":     ("Bild fuer %s aus Sekunde %.1f gesetzt.",
+    "frame_ok":     ("Bild für %s aus Sekunde %.1f gesetzt.",
                      "Image for %s taken at second %.1f."),
     "frame_icon":   ("Pack-Symbol aus Sekunde %.1f gesetzt.",
                      "Pack icon taken at second %.1f."),
@@ -286,7 +315,7 @@ T = {
     "pack_readme":  ("Beschreibung:", "Description:"),
     "chars_found":  ("Figuren: %s", "Characters: %s"),
     "chars_none":   ("noch keine Figuren vergeben", "no characters assigned yet"),
-    "cv_nochar":    ("Fuer das Choicer-Voicer-Format braucht jeder Clip eine "
+    "cv_nochar":    ("Für das Choicer-Voicer-Format braucht jeder Clip eine "
                      "Figur. Ohne Angabe wird der Clipname genommen.",
                      "The Choicer Voicer format needs a character per clip. "
                      "Without one the clip name is used."),
@@ -297,15 +326,15 @@ T = {
     "upd_more":     ("Was ist neu", "What's new"),
     "upd_less":     ("Zuklappen", "Collapse"),
     "upd_now":      ("Jetzt aktualisieren", "Update now"),
-    "upd_later":    ("Spaeter", "Later"),
+    "upd_later":    ("Später", "Later"),
     "upd_page":     ("Auf GitHub", "On GitHub"),
     "upd_nonotes":  ("Zu dieser Version wurde kein Text hinterlegt.",
                      "No description was published for this version."),
     "upd_ask_t":    ("Update einspielen?", "Install update?"),
     "upd_ask":      ("DubForge und DubStage werden auf %s aktualisiert.\n\n"
-                     "Die App schliesst sich, die Dateien werden getauscht "
+                     "Die App schließt sich, die Dateien werden getauscht "
                      "und die App startet neu.\n"
-                     "Packs, Aufnahmen und Einstellungen bleiben unberuehrt.\n\n"
+                     "Packs, Aufnahmen und Einstellungen bleiben unberührt.\n\n"
                      "Fortfahren?",
                      "DubForge and DubStage will be updated to %s.\n\n"
                      "The app closes, the files are replaced and the app "
@@ -313,7 +342,7 @@ T = {
                      "Packs, recordings and settings are left untouched.\n\n"
                      "Continue?"),
     "upd_dl":       ("Lade %s ... %d%%", "Downloading %s ... %d%%"),
-    "upd_check":    ("Pruefe das Archiv ...", "Checking the archive ..."),
+    "upd_check":    ("Prüfe das Archiv ...", "Checking the archive ..."),
     "upd_swap":     ("Tausche Dateien - die App startet gleich neu ...",
                      "Replacing files - the app will restart shortly ..."),
     "upd_fail_t":   ("Update fehlgeschlagen", "Update failed"),
@@ -356,6 +385,7 @@ class App(tk.Tk):
 
     def __init__(self):
         super().__init__()
+        appwin.set_icon(self, "DubForge")
         self.cfg = load_cfg()
         set_lang(self.cfg.get("lang", "de"))
 
@@ -465,116 +495,223 @@ class App(tk.Tk):
             except Exception:
                 pass
 
-        cfg(".", background=BG, foreground=FG, fieldbackground=BG2,
-                    bordercolor="#3a3d4d", lightcolor=BG2, darkcolor=BG2)
-        cfg("TFrame", background=BG)
-        cfg("Card.TFrame", background=BG2)
-        cfg("TLabel", background=BG, foreground=FG)
-        cfg("Card.TLabel", background=BG2, foreground=FG)
-        cfg("Head.TLabel", background=BG, foreground=ACC2,
-                    font=("Segoe UI Semibold", 11))
-        cfg("Dim.TLabel", background=BG, foreground="#9aa0b5")
-        cfg("TButton", background="#3a3d4d", foreground=FG, padding=6,
-                    borderwidth=0)
-        mp("TButton", background=[("active", "#4a4e63")])
-        cfg("Accent.TButton", background=ACC, foreground="#ffffff",
-                    padding=8, font=("Segoe UI Semibold", 10))
-        mp("Accent.TButton", background=[("active", "#9078ff")])
-        cfg("Go.TButton", background=ACC2, foreground="#0d2b20",
-                    padding=8, font=("Segoe UI Semibold", 10))
-        mp("Go.TButton", background=[("active", "#5ee7ae")])
-        cfg("TEntry", fieldbackground=BG2, foreground=FG,
-                    insertcolor=FG, padding=4)
+        def lay(style, spec):
+            try:
+                s.layout(style, spec)
+            except Exception:
+                pass
+
+        # Aufbau: dunkle Seite (PAGE), darauf Karten (CARD) je Schritt.
+        # Die Grundfarbe aller Widgets ist die Kartenfarbe - dann muss nicht
+        # jedes Kaestchen und Etikett in einer Karte eigens umgestellt werden.
+        # Was direkt auf der Seite liegt, nimmt die Page-Stile.
+        cfg(".", background=CARD, foreground=FG, fieldbackground=FIELD,
+            bordercolor=EDGE, lightcolor=CARD, darkcolor=CARD,
+            troughcolor=FIELD, selectbackground=ACC,
+            selectforeground="#ffffff", insertcolor=FG, focuscolor=ACC,
+            font=(UI_FONT, 10))
+        cfg("TFrame", background=CARD)
+        cfg("Page.TFrame", background=PAGE)
+        cfg("Card.TFrame", background=CARD)
+        cfg("TLabel", background=CARD, foreground=FG)
+        cfg("Dim.TLabel", background=CARD, foreground=DIM, font=(UI_FONT, 9))
+        cfg("Title.TLabel", background=CARD, foreground=FG,
+            font=(UI_FONT_SB, 12))
+        cfg("Field.TLabel", background=CARD, foreground=DIM,
+            font=(UI_FONT, 9))
+        cfg("Page.TLabel", background=PAGE, foreground=FG)
+        cfg("PageDim.TLabel", background=PAGE, foreground=DIM,
+            font=(UI_FONT, 9))
+        cfg("App.TLabel", background=PAGE, foreground=FG,
+            font=(UI_FONT_SB, 17))
+        cfg("Status.TLabel", background=CARD, foreground=DIM,
+            font=(UI_FONT, 9))
+
+        # Knoepfe: flach, grosszuegig gepolstert, Hover eine Stufe heller.
+        cfg("TButton", background=BTN, foreground=FG, padding=(14, 7),
+            borderwidth=0, relief="flat", focusthickness=0,
+            focuscolor=BTN, font=(UI_FONT, 10))
+        mp("TButton",
+           background=[("disabled", CARD_HI), ("pressed", BTN_HI),
+                       ("active", BTN_HI)],
+           foreground=[("disabled", MUTED)],
+           focuscolor=[("active", BTN_HI)])
+        for name, bg, hi, fg in (("Accent", ACC, ACC_HI, "#ffffff"),
+                                 ("Go", ACC2, ACC2_HI, "#08241a")):
+            cfg(name + ".TButton", background=bg, foreground=fg,
+                padding=(18, 9), font=(UI_FONT_SB, 10), focuscolor=bg)
+            mp(name + ".TButton",
+               background=[("disabled", CARD_HI), ("pressed", hi),
+                           ("active", hi)],
+               foreground=[("disabled", MUTED)],
+               focuscolor=[("active", hi)])
+        cfg("Ghost.TButton", background=CARD, foreground=DIM,
+            padding=(10, 6), focuscolor=CARD)
+        mp("Ghost.TButton",
+           background=[("active", CARD_HI), ("pressed", CARD_HI)],
+           foreground=[("active", FG), ("disabled", MUTED)],
+           focuscolor=[("active", CARD_HI)])
+
+        # Eingabefelder liegen eine Stufe tiefer als die Karte, der Rahmen
+        # leuchtet im Fokus in der Akzentfarbe.
+        field = dict(fieldbackground=FIELD, foreground=FG, insertcolor=FG,
+                     bordercolor=EDGE, lightcolor=FIELD, darkcolor=FIELD,
+                     padding=(8, 6))
+        cfg("TEntry", **field)
         # "readonly" und "disabled" haben eigene Farben, die configure()
         # nicht erreicht - sonst wird das Feld hell und der Text unsichtbar.
         mp("TEntry",
-              fieldbackground=[("readonly", BG2), ("disabled", BG)],
-              foreground=[("readonly", "#9aa0b5"), ("disabled", "#7a7f96")],
-              bordercolor=[("focus", ACC)])
+           fieldbackground=[("readonly", CARD_HI), ("disabled", CARD)],
+           foreground=[("readonly", DIM), ("disabled", MUTED)],
+           bordercolor=[("focus", ACC), ("hover", EDGE_HI)],
+           lightcolor=[("focus", ACC)], darkcolor=[("focus", ACC)])
         # Comboboxen: der Zustand "readonly" hat eigene Farben, die
         # configure() nicht erreicht - deshalb zusaetzlich map().
-        cfg("TCombobox", fieldbackground=BG2, background=BG2,
-                    foreground=FG, arrowcolor=FG, bordercolor="#3a3d4d",
-                    lightcolor=BG2, darkcolor=BG2, padding=4,
-                    selectbackground=BG2, selectforeground=FG)
+        cfg("TCombobox", background=FIELD, arrowcolor=DIM, arrowsize=12,
+            selectbackground=FIELD, selectforeground=FG, **field)
         mp("TCombobox",
-              fieldbackground=[("readonly", BG2), ("disabled", BG)],
-              background=[("readonly", BG2), ("active", BG2)],
-              foreground=[("readonly", FG), ("disabled", "#7a7f96")],
-              selectbackground=[("readonly", BG2), ("focus", BG2)],
-              selectforeground=[("readonly", FG), ("focus", FG)],
-              arrowcolor=[("readonly", FG), ("disabled", "#7a7f96")])
+           fieldbackground=[("readonly", FIELD), ("disabled", CARD)],
+           background=[("readonly", FIELD), ("active", FIELD)],
+           foreground=[("readonly", FG), ("disabled", MUTED)],
+           selectbackground=[("readonly", FIELD), ("focus", FIELD)],
+           selectforeground=[("readonly", FG), ("focus", FG)],
+           bordercolor=[("focus", ACC), ("hover", EDGE_HI)],
+           arrowcolor=[("active", FG), ("disabled", MUTED)])
         # Die aufklappende Liste ist ein Tk-Listbox-Widget und wird von
         # ttk nicht mitgestaltet - die muss ueber Optionen gesetzt werden.
-        self.option_add("*TCombobox*Listbox.background", BG2)
+        self.option_add("*TCombobox*Listbox.background", CARD_HI)
         self.option_add("*TCombobox*Listbox.foreground", FG)
         self.option_add("*TCombobox*Listbox.selectBackground", ACC)
         self.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
         self.option_add("*TCombobox*Listbox.borderWidth", 0)
+        self.option_add("*TCombobox*Listbox.font", (UI_FONT, 10))
+        cfg("TSpinbox", background=FIELD, arrowcolor=DIM, arrowsize=10,
+            **field)
+        mp("TSpinbox",
+           fieldbackground=[("readonly", FIELD), ("disabled", CARD)],
+           background=[("active", FIELD), ("readonly", FIELD)],
+           foreground=[("disabled", MUTED)],
+           bordercolor=[("focus", ACC), ("hover", EDGE_HI)],
+           arrowcolor=[("active", ACC_HI), ("disabled", MUTED)])
+
         # Kaestchen und Punkte: clam faerbt sie beim Ueberfahren hell ein,
         # dann steht dunkler Text auf weissem Grund. Alle Zustaende setzen.
         for kind in ("TCheckbutton", "TRadiobutton"):
-            cfg(kind, background=BG, foreground=FG,
-                indicatorbackground=BG2, indicatorforeground=FG,
-                focuscolor=BG, padding=2)
+            cfg(kind, background=CARD, foreground=FG, indicatorsize=14,
+                indicatorbackground=FIELD, indicatorforeground="#ffffff",
+                indicatormargin=(0, 0, 8, 0), upperbordercolor=EDGE_HI,
+                lowerbordercolor=EDGE_HI, focuscolor=CARD, padding=(2, 3))
             mp(kind,
-               background=[("active", BG), ("pressed", BG)],
-               foreground=[("disabled", "#7a7f96"), ("active", FG)],
+               background=[("active", CARD), ("pressed", CARD)],
+               foreground=[("disabled", MUTED), ("active", FG)],
                indicatorbackground=[("selected", ACC), ("pressed", ACC),
-                                    ("active", "#3a3d4d"),
-                                    ("disabled", BG2)],
+                                    ("active", CARD_HI),
+                                    ("disabled", CARD)],
                indicatorforeground=[("selected", "#ffffff"),
-                                    ("disabled", "#7a7f96")])
-        cfg("Treeview", background=BG2, fieldbackground=BG2,
-                    foreground=FG, rowheight=24, borderwidth=0)
-        cfg("Treeview.Heading", background="#343747", foreground=FG,
-                    relief="flat", font=("Segoe UI Semibold", 9))
+                                    ("disabled", MUTED)])
+
+        # Segmentschalter fuer das Zielformat: Radioknoepfe als Kacheln.
+        lay("Seg.TRadiobutton",
+            [("Radiobutton.padding", {"sticky": "nswe", "children": [
+                ("Radiobutton.label", {"sticky": "nswe"})]})])
+        cfg("Seg.TRadiobutton", background=PAGE_HI, foreground=DIM,
+            padding=(14, 6), anchor="center", font=(UI_FONT, 10))
+        mp("Seg.TRadiobutton",
+           background=[("selected", ACC), ("active", CARD_HI)],
+           foreground=[("selected", "#ffffff"), ("active", FG),
+                       ("disabled", MUTED)])
+
+        # Tabelle: ruhige Zeilen im Wechsel, Kopf ohne Kanten.
+        cfg("Treeview", background=FIELD, fieldbackground=FIELD,
+            foreground=FG, rowheight=30, borderwidth=0, relief="flat",
+            font=(UI_FONT, 10))
+        lay("Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
+        cfg("Treeview.Heading", background=CARD_HI, foreground=DIM,
+            relief="flat", borderwidth=0, padding=(8, 6),
+            font=(UI_FONT_SB, 9))
         # Spaltenkopf wird beim Ueberfahren sonst weiss.
         mp("Treeview.Heading",
-              background=[("active", "#404560"), ("pressed", "#4a5070")],
-              foreground=[("active", FG), ("pressed", FG)],
-              relief=[("active", "flat"), ("pressed", "flat")])
+           background=[("active", CARD_HI), ("pressed", CARD_HI)],
+           foreground=[("active", FG), ("pressed", FG)],
+           relief=[("active", "flat"), ("pressed", "flat")])
         mp("Treeview",
-              background=[("selected", ACC)],
-              foreground=[("selected", "#ffffff")])
-        cfg("TProgressbar", background=ACC2, troughcolor=BG2,
-                    borderwidth=0)
+           background=[("selected", ACC)],
+           foreground=[("selected", "#ffffff")])
+
+        cfg("TProgressbar", background=ACC, troughcolor=FIELD,
+            bordercolor=FIELD, lightcolor=ACC, darkcolor=ACC,
+            borderwidth=0, thickness=6)
+        cfg("TSeparator", background=EDGE)
+
+        # Schmale Scrollbalken ohne Pfeile, wie in modernen Oberflaechen.
+        for orient, side in (("Vertical", "ns"), ("Horizontal", "we")):
+            lay(orient + ".TScrollbar",
+                [(orient + ".Scrollbar.trough", {"sticky": side, "children": [
+                    (orient + ".Scrollbar.thumb",
+                     {"expand": "1", "sticky": "nswe"})]})])
+            cfg(orient + ".TScrollbar", background=SCROLL, troughcolor=CARD,
+                bordercolor=CARD, lightcolor=SCROLL, darkcolor=SCROLL,
+                arrowsize=10, gripcount=0, borderwidth=0)
+            mp(orient + ".TScrollbar",
+               background=[("active", SCROLL_HI), ("pressed", ACC)],
+               lightcolor=[("active", SCROLL_HI), ("pressed", ACC)],
+               darkcolor=[("active", SCROLL_HI), ("pressed", ACC)])
+        cfg("Page.Vertical.TScrollbar", troughcolor=PAGE, bordercolor=PAGE)
+
+        # Schieberegler: schmale Spur, Griff in der Akzentfarbe. Der Griff
+        # kommt aus "background", der beim Ueberfahren hell werden wuerde.
+        cfg("TScale", background=ACC, troughcolor=FIELD, bordercolor=FIELD,
+            lightcolor=ACC, darkcolor=ACC, gripcount=0, sliderlength=22,
+            sliderthickness=12, troughrelief="flat", borderwidth=0)
+        mp("TScale",
+           background=[("disabled", MUTED), ("active", ACC_HI),
+                       ("pressed", ACC_HI)],
+           lightcolor=[("active", ACC_HI)], darkcolor=[("active", ACC_HI)])
+
         cfg("Ban.TFrame", background=BAN)
         cfg("Ban.TLabel", background=BAN, foreground=FG)
         cfg("BanHead.TLabel", background=BAN, foreground="#ffffff",
-                    font=("Segoe UI Semibold", 11))
+            font=(UI_FONT_SB, 11))
         cfg("BanDim.TLabel", background=BAN, foreground="#b6b1dc")
         cfg("Ban.TButton", background="#4b4590", foreground=FG,
-                    padding=6, borderwidth=0)
-        mp("Ban.TButton", background=[("active", "#5d56ad")])
-        cfg("Vertical.TScrollbar", background="#3a3d4d",
-                    troughcolor=BG2, bordercolor=BG2, arrowcolor=FG,
-                    darkcolor=BG2, lightcolor=BG2, borderwidth=0)
-        mp("Vertical.TScrollbar", background=[("active", "#4a4e63")])
-        cfg("Horizontal.TScrollbar", background="#3a3d4d",
-                    troughcolor=BG2, bordercolor=BG2, arrowcolor=FG,
-                    darkcolor=BG2, lightcolor=BG2, borderwidth=0)
-        mp("Horizontal.TScrollbar", background=[("active", "#4a4e63")])
-        cfg("TLabelframe", background=BG, foreground=ACC2)
-        cfg("TLabelframe.Label", background=BG, foreground=ACC2,
-                    font=("Segoe UI Semibold", 10))
-        # Schieberegler: der Griff kommt aus "background", der beim
-        # Ueberfahren ebenfalls hell werden wuerde.
-        cfg("TScale", background="#4a4e63", troughcolor=BG2,
-                    bordercolor="#3a3d4d", lightcolor="#4a4e63",
-                    darkcolor="#4a4e63")
-        mp("TScale",
-              background=[("active", ACC), ("pressed", ACC)],
-              lightcolor=[("active", ACC)], darkcolor=[("active", ACC)])
+            padding=(12, 6), borderwidth=0, focuscolor="#4b4590")
+        mp("Ban.TButton", background=[("active", "#5d56ad")],
+           focuscolor=[("active", "#5d56ad")])
 
-        cfg("TSpinbox", fieldbackground=BG2, background=BG2,
-                    foreground=FG, arrowcolor=FG, bordercolor="#3a3d4d",
-                    lightcolor=BG2, darkcolor=BG2, insertcolor=FG, padding=3)
-        mp("TSpinbox",
-              fieldbackground=[("readonly", BG2), ("disabled", BG)],
-              background=[("active", BG2), ("readonly", BG2)],
-              foreground=[("disabled", "#7a7f96")],
-              arrowcolor=[("active", ACC2), ("disabled", "#7a7f96")])
+    # --------------------------------------------------------- Bausteine
+    def _card(self, parent, number, title, hint=None, expand=False):
+        """Eine Karte mit nummeriertem Kopf. Gibt den Inhaltsbereich zurueck."""
+        card = ttk.Frame(parent, style="Card.TFrame", padding=(18, 14, 18, 16))
+        card.pack(fill="both" if expand else "x", expand=expand, pady=(0, 12))
+        head = ttk.Frame(card)
+        head.pack(fill="x", pady=(0, 12))
+        if number:
+            badge = tk.Canvas(head, width=26, height=26, bg=CARD,
+                              highlightthickness=0, takefocus=0)
+            badge.create_oval(1, 1, 25, 25, fill=ACC, outline="")
+            badge.create_text(13, 13, text=str(number), fill="#ffffff",
+                              font=(UI_FONT_SB, 10))
+            badge.pack(side="left", padx=(0, 10))
+        ttk.Label(head, text=title, style="Title.TLabel").pack(side="left")
+        if hint:
+            ttk.Label(head, text=hint, style="Dim.TLabel").pack(
+                side="left", padx=(12, 0), pady=(3, 0))
+        body = ttk.Frame(card)
+        body.pack(fill="both", expand=True)
+        return body
+
+    def _logo(self, size=34):
+        """Das App-Symbol fuer die Kopfzeile (ohne Pillow: keines)."""
+        if getattr(self, "_logo_img", None) is None:
+            self._logo_img = False
+            try:
+                from PIL import Image, ImageTk
+                im = Image.open(os.path.join(APP_DIR, "assets", "dubforge.png"))
+                im = im.convert("RGBA").resize((size, size), Image.LANCZOS)
+                self._logo_img = ImageTk.PhotoImage(im)
+            except Exception:
+                pass
+        return self._logo_img or None
 
     def _build_ui(self):
         self.title(t("title"))
@@ -582,7 +719,7 @@ class App(tk.Tk):
 
         # Der Inhalt liegt in einem Canvas mit Scrollbalken. Ohne das war
         # Schritt 3 bei nicht maximiertem Fenster schlicht nicht erreichbar.
-        outer = ttk.Frame(self)
+        outer = ttk.Frame(self, style="Page.TFrame")
         outer.pack(fill="both", expand=True)
         self.ui_root = outer
 
@@ -592,102 +729,105 @@ class App(tk.Tk):
         self.upd_text = None
         self.upd_status = None
 
-        host = ttk.Frame(outer)
+        host = ttk.Frame(outer, style="Page.TFrame")
         host.pack(fill="both", expand=True)
         self.scroll_host = host
 
         # yscrollincrement macht das Mausrad berechenbar: 3 Einheiten = 60 px
-        self.vcanvas = tk.Canvas(host, bg=BG, highlightthickness=0, takefocus=0,
-                                 yscrollincrement=20)
+        self.vcanvas = tk.Canvas(host, bg=PAGE, highlightthickness=0,
+                                 takefocus=0, yscrollincrement=20)
         self.vcanvas.pack(side="left", fill="both", expand=True)
-        vbar = ttk.Scrollbar(host, orient="vertical", command=self.vcanvas.yview)
-        vbar.pack(side="right", fill="y")
+        vbar = ttk.Scrollbar(host, orient="vertical", command=self.vcanvas.yview,
+                             style="Page.Vertical.TScrollbar")
+        vbar.pack(side="right", fill="y", padx=(0, 2), pady=2)
         self.vcanvas.configure(yscrollcommand=vbar.set)
 
-        root = ttk.Frame(self.vcanvas, padding=10)
+        root = ttk.Frame(self.vcanvas, style="Page.TFrame", padding=(20, 16))
         self._root_win = self.vcanvas.create_window((0, 0), window=root,
                                                     anchor="nw")
         self.root_frame = root
         root.bind("<Configure>", self._scroll_geom)
         self.vcanvas.bind("<Configure>", self._scroll_geom)
 
-        # ---------------- Kopfzeile mit Sprachwahl
-        top = ttk.Frame(root)
-        top.pack(fill="x")
-        ttk.Label(top, text="DubForge",
-                  style="Head.TLabel").pack(side="left")
-        self.lang_box = ttk.Combobox(top, textvariable=self.lang_var, width=10,
+        # ---------------- Kopfzeile: Logo, Name, Zielformat, Sprache
+        top = ttk.Frame(root, style="Page.TFrame")
+        top.pack(fill="x", pady=(0, 16))
+        logo = self._logo()
+        if logo:
+            tk.Label(top, image=logo, bg=PAGE, bd=0).pack(side="left",
+                                                          padx=(0, 10))
+        ttk.Label(top, text="DubForge", style="App.TLabel").pack(side="left")
+        ttk.Label(top, text=t("tagline"), style="PageDim.TLabel").pack(
+            side="left", padx=(12, 0), pady=(6, 0))
+
+        self.lang_box = ttk.Combobox(top, textvariable=self.lang_var, width=9,
                                      state="readonly",
                                      values=("Deutsch", "English"))
         self.lang_box.pack(side="right")
         self.lang_box.bind("<<ComboboxSelected>>", self._change_lang)
         ttk.Label(top, text=t("lang_label"),
-                  style="Dim.TLabel").pack(side="right", padx=(0, 6))
+                  style="PageDim.TLabel").pack(side="right", padx=(0, 8))
 
-        # ---------------- Zielformat
-        fmt_row = ttk.Frame(root)
-        fmt_row.pack(fill="x", pady=(10, 0))
-        ttk.Label(fmt_row, text=t("fmt_label"),
-                  style="Head.TLabel").pack(side="left")
+        seg = ttk.Frame(top, style="Page.TFrame")
+        seg.pack(side="right", padx=(0, 24))
+        ttk.Label(seg, text=t("fmt_label"),
+                  style="PageDim.TLabel").pack(side="left", padx=(0, 8))
         for val, key in (("dubstage", "fmt_ds"), ("cv", "fmt_cv")):
-            ttk.Radiobutton(fmt_row, text=t(key), value=val,
-                            variable=self.fmt,
-                            command=self._change_fmt).pack(side="left",
-                                                           padx=(14, 0))
-        ttk.Label(fmt_row,
-                  text=t("fmt_hint_cv") if cvmode else t("fmt_hint_ds"),
-                  style="Dim.TLabel").pack(side="left", padx=(18, 0))
+            ttk.Radiobutton(seg, text=t(key), value=val, variable=self.fmt,
+                            style="Seg.TRadiobutton",
+                            command=self._change_fmt).pack(side="left")
 
         # ---------------- Schritt 1: Quelle
-        step1 = ttk.LabelFrame(root, text=t("s1"), padding=10)
-        step1.pack(fill="x", pady=(8, 0))
+        step1 = self._card(root, 1, t("s1"), hint=t("s1_hint"))
 
         row = ttk.Frame(step1)
         row.pack(fill="x")
         ttk.Radiobutton(row, text=t("src_url"), value="url",
                         variable=self.src_mode,
-                        command=self._sync_src).pack(side="left", padx=(0, 16))
+                        command=self._sync_src).pack(side="left", padx=(0, 18))
         ttk.Radiobutton(row, text=t("src_file"), value="file",
                         variable=self.src_mode,
                         command=self._sync_src).pack(side="left")
+        ttk.Label(row, text=t("fmt_hint_cv") if cvmode else t("fmt_hint_ds"),
+                  style="Dim.TLabel").pack(side="right")
 
         r2 = ttk.Frame(step1)
-        r2.pack(fill="x", pady=(8, 0))
+        r2.pack(fill="x", pady=(10, 0))
         self.url_entry = ttk.Entry(r2, textvariable=self.url_var)
         self.url_entry.pack(side="left", fill="x", expand=True)
         self.file_btn = ttk.Button(r2, text=t("pick_file"), command=self._pick_file)
         self.file_btn.pack(side="left", padx=(8, 0))
 
         r3 = ttk.Frame(step1)
-        r3.pack(fill="x", pady=(8, 0))
-        ttk.Label(r3, text=t("from")).pack(side="left")
-        ttk.Entry(r3, textvariable=self.t_start, width=12).pack(side="left", padx=6)
-        ttk.Label(r3, text=t("to")).pack(side="left")
-        ttk.Entry(r3, textvariable=self.t_end, width=12).pack(side="left", padx=6)
+        r3.pack(fill="x", pady=(10, 0))
+        ttk.Label(r3, text=t("from"), style="Field.TLabel").pack(side="left")
+        ttk.Entry(r3, textvariable=self.t_start, width=11).pack(
+            side="left", padx=(6, 14))
+        ttk.Label(r3, text=t("to"), style="Field.TLabel").pack(side="left")
+        ttk.Entry(r3, textvariable=self.t_end, width=11).pack(
+            side="left", padx=(6, 10))
         ttk.Label(r3, text=t("time_hint"),
                   style="Dim.TLabel").pack(side="left", padx=(4, 0))
         ttk.Checkbutton(r3, text=t("sep_voc"),
                         variable=self.sep_var).pack(side="right")
 
         r4 = ttk.Frame(step1)
-        r4.pack(fill="x", pady=(10, 0))
+        r4.pack(fill="x", pady=(14, 0))
         self.analyze_btn = ttk.Button(r4, text=t("analyze"),
                                       style="Accent.TButton",
                                       command=self.start_analyze)
         self.analyze_btn.pack(side="left")
         ttk.Label(r4, text=t("demucs_hint"),
-                  style="Dim.TLabel").pack(side="left", padx=10)
-        self.upd_btn = ttk.Button(r4, text=t("upd_ytdlp"),
+                  style="Dim.TLabel").pack(side="left", padx=12)
+        self.upd_btn = ttk.Button(r4, text=t("upd_ytdlp"), style="Ghost.TButton",
                                   command=self.update_ytdlp)
         self.upd_btn.pack(side="right")
 
         # ---------------- Schritt 2: Clips
-        step2 = ttk.LabelFrame(root, text=t("s2"), padding=10)
-        step2.pack(fill="both", expand=True, pady=(10, 0))
+        step2 = self._card(root, 2, t("s2"), hint=t("mouse_hint"), expand=True)
 
-        self.canvas = tk.Canvas(step2, height=170, bg="#15161c",
-                                highlightthickness=1,
-                                highlightbackground="#3a3d4d")
+        self.canvas = tk.Canvas(step2, height=180, bg=WAVE_BG,
+                                highlightthickness=0, cursor="crosshair")
         self.canvas.pack(fill="x")
         self.canvas.bind("<Configure>", lambda e: self.draw_wave())
         self.canvas.bind("<ButtonPress-1>", self._canvas_down)
@@ -697,80 +837,67 @@ class App(tk.Tk):
         self.canvas.bind("<Double-Button-1>", lambda e: self._play_selected())
 
         nav = ttk.Frame(step2)
-        nav.pack(fill="x", pady=(6, 0))
-        ttk.Button(nav, text=t("zoom_in"), width=8,
+        nav.pack(fill="x", pady=(8, 0))
+        ttk.Button(nav, text=t("zoom_in"), style="Ghost.TButton",
                    command=lambda: self._zoom(0.6)).pack(side="left")
-        ttk.Button(nav, text=t("zoom_out"), width=8,
+        ttk.Button(nav, text=t("zoom_out"), style="Ghost.TButton",
                    command=lambda: self._zoom(1.7)).pack(side="left", padx=4)
-        ttk.Button(nav, text=t("zoom_all"), width=12,
+        ttk.Button(nav, text=t("zoom_all"), style="Ghost.TButton",
                    command=self._zoom_all).pack(side="left")
         self.hscroll = ttk.Scale(nav, from_=0.0, to=1.0, orient="horizontal",
                                  command=self._scroll_to)
-        self.hscroll.pack(side="left", fill="x", expand=True, padx=10)
-        ttk.Label(nav, text=t("mouse_hint"),
-                  style="Dim.TLabel").pack(side="right")
+        self.hscroll.pack(side="left", fill="x", expand=True, padx=(14, 0))
 
         mid = ttk.Frame(step2)
-        mid.pack(fill="both", expand=True, pady=(8, 0))
+        mid.pack(fill="both", expand=True, pady=(12, 0))
 
-        spec = [("nr", "col_nr", 40), ("name", "col_name", 170)]
+        spec = [("nr", "col_nr", 44), ("name", "col_name", 170)]
         if cvmode:
             spec.append(("char", "col_char", 110))
         spec += [("start", "col_start", 85), ("end", "col_end", 85),
                  ("len", "col_len", 70), ("caption", "col_caption", 300)]
         cols = tuple(s[0] for s in spec)
-        self.tree = ttk.Treeview(mid, columns=cols, show="headings", height=9)
+        self.tree = ttk.Treeview(mid, columns=cols, show="headings", height=8)
         for c, key, w in spec:
-            self.tree.heading(c, text=t(key))
+            self.tree.heading(c, text=t(key).upper() if c != "nr" else "#")
             self.tree.column(
                 c, width=w,
                 anchor="w" if c in ("name", "char", "caption") else "center")
+        self.tree.tag_configure("odd", background=ROW_ALT)
         self.tree.pack(side="left", fill="both", expand=True)
         sb = ttk.Scrollbar(mid, orient="vertical", command=self.tree.yview)
-        sb.pack(side="left", fill="y")
+        sb.pack(side="left", fill="y", padx=(4, 0))
         self.tree.configure(yscrollcommand=sb.set)
         self.tree.bind("<<TreeviewSelect>>", self._tree_select)
         self.tree.bind("<Double-Button-1>", self._rename_selected)
 
-        side = ttk.Frame(mid, padding=(10, 0))
+        side = ttk.Frame(mid, padding=(14, 0, 0, 0))
         side.pack(side="left", fill="y")
         for key, cmd in (("btn_play", self._play_selected),
                          ("btn_stop", self._stop_play),
                          ("btn_rename", self._rename_selected),
                          ("btn_split", self._split_selected),
                          ("btn_delete", self._delete_selected)):
-            ttk.Button(side, text=t(key), width=16, command=cmd).pack(pady=2)
-        ttk.Separator(side, orient="horizontal").pack(fill="x", pady=8)
-        ttk.Label(side, text=t("sensitivity")).pack()
+            ttk.Button(side, text=t(key), width=15, command=cmd).pack(
+                fill="x", pady=(0, 6))
+        ttk.Separator(side, orient="horizontal").pack(fill="x", pady=(6, 10))
+        ttk.Label(side, text=t("sensitivity"), style="Field.TLabel").pack(
+            anchor="w")
         ttk.Scale(side, from_=0.4, to=2.5, variable=self.sens,
-                  orient="horizontal", length=150).pack()
-        ttk.Label(side, text=t("maxlen")).pack(pady=(8, 0))
+                  orient="horizontal", length=150).pack(fill="x", pady=(4, 0))
+        ttk.Label(side, text=t("maxlen"), style="Field.TLabel").pack(
+            anchor="w", pady=(10, 0))
         ttk.Spinbox(side, from_=1.0, to=30.0, increment=0.5,
-                    textvariable=self.maxlen, width=8).pack()
-        ttk.Button(side, text=t("redetect"), width=16,
-                   command=self.redetect).pack(pady=(8, 0))
-
-        asr = ttk.Frame(step2)
-        asr.pack(fill="x", pady=(8, 0))
-        ttk.Label(asr, text=t("asr_language")).pack(side="left")
-        ttk.Combobox(asr, textvariable=self.asr_language, values=tr.LANGUAGES,
-                     width=5).pack(side="left", padx=4)
-        ttk.Label(asr, text=t("asr_model")).pack(side="left")
-        ttk.Combobox(asr, textvariable=self.asr_model, values=tr.MODELS,
-                     state="readonly", width=10).pack(side="left", padx=4)
-        ttk.Label(asr, text=t("asr_device")).pack(side="left")
-        ttk.Combobox(asr, textvariable=self.asr_device, values=("cpu", "cuda"),
-                     state="readonly", width=5).pack(side="left", padx=4)
-        ttk.Checkbutton(asr, text=t("asr_replace"), variable=self.asr_replace).pack(side="left")
-        self.transcribe_btn = ttk.Button(asr, text=t("asr_generate"), command=self.start_transcribe)
-        self.transcribe_btn.pack(side="left", padx=6)
-        ttk.Label(step2, text=t("asr_hint"), style="Dim.TLabel").pack(anchor="w", pady=4)
+                    textvariable=self.maxlen, width=8).pack(fill="x",
+                                                            pady=(4, 0))
+        ttk.Button(side, text=t("redetect"), width=15,
+                   command=self.redetect).pack(fill="x", pady=(12, 0))
 
         cap = ttk.Frame(step2)
-        cap.pack(fill="x", pady=(8, 0))
-        ttk.Label(cap, text=t("caption")).pack(side="left")
+        cap.pack(fill="x", pady=(12, 0))
+        ttk.Label(cap, text=t("caption"), style="Field.TLabel").pack(side="left")
         self.caption_entry = ttk.Entry(cap, textvariable=self.caption_var)
-        self.caption_entry.pack(side="left", fill="x", expand=True, padx=6)
+        self.caption_entry.pack(side="left", fill="x", expand=True, padx=8)
         self.caption_entry.bind("<Return>", self._caption_next)
         self.caption_entry.bind("<FocusOut>", lambda e: self._caption_save())
         ttk.Label(cap, text=t("caption_hint"),
@@ -781,95 +908,132 @@ class App(tk.Tk):
         self.char_thumb = None
         if cvmode:
             ch = ttk.Frame(step2)
-            ch.pack(fill="x", pady=(6, 0))
-            ttk.Label(ch, text=t("character")).pack(side="left")
+            ch.pack(fill="x", pady=(8, 0))
+            ttk.Label(ch, text=t("character"), style="Field.TLabel").pack(
+                side="left")
             self.char_entry = ttk.Entry(ch, textvariable=self.char_var,
                                         width=20)
-            self.char_entry.pack(side="left", padx=6)
+            self.char_entry.pack(side="left", padx=8)
             self.char_entry.bind("<Return>", lambda e: self._char_save())
             self.char_entry.bind("<FocusOut>", lambda e: self._char_save())
             ttk.Button(ch, text=t("btn_frame"),
                        command=self._grab_char_image).pack(side="left")
-            self.char_thumb = tk.Label(ch, bg=BG, bd=0)
+            self.char_thumb = tk.Label(ch, bg=CARD, bd=0)
             self.char_thumb.pack(side="left", padx=10)
             ttk.Label(ch, text=t("char_hint"),
                       style="Dim.TLabel").pack(side="left")
 
+        # Automatische Untertitel: eigene Leiste, klar abgesetzt.
+        ttk.Separator(step2, orient="horizontal").pack(fill="x", pady=(14, 0))
+        asr = ttk.Frame(step2, padding=(0, 12, 0, 0))
+        asr.pack(fill="x")
+        ttk.Label(asr, text=t("asr_language"), style="Field.TLabel").pack(
+            side="left")
+        ttk.Combobox(asr, textvariable=self.asr_language, values=tr.LANGUAGES,
+                     width=5).pack(side="left", padx=(6, 14))
+        ttk.Label(asr, text=t("asr_model"), style="Field.TLabel").pack(
+            side="left")
+        ttk.Combobox(asr, textvariable=self.asr_model, values=tr.MODELS,
+                     state="readonly", width=10).pack(side="left", padx=(6, 14))
+        ttk.Label(asr, text=t("asr_device"), style="Field.TLabel").pack(
+            side="left")
+        ttk.Combobox(asr, textvariable=self.asr_device, values=("cpu", "cuda"),
+                     state="readonly", width=5).pack(side="left", padx=(6, 14))
+        ttk.Checkbutton(asr, text=t("asr_replace"),
+                        variable=self.asr_replace).pack(side="left")
+        self.transcribe_btn = ttk.Button(asr, text=t("asr_generate"),
+                                         command=self.start_transcribe)
+        self.transcribe_btn.pack(side="right")
+        ttk.Label(step2, text=t("asr_hint"), style="Dim.TLabel",
+                  wraplength=1000).pack(anchor="w", pady=(6, 0))
+
         # ---------------- Schritt 3: Bauen
-        step3 = ttk.LabelFrame(root, text=t("s3"), padding=10)
-        step3.pack(fill="x", pady=(10, 0))
+        step3 = self._card(root, 3, t("s3"))
 
         g = ttk.Frame(step3)
         g.pack(fill="x")
-        ttk.Label(g, text=t("pack_name")).grid(row=0, column=0, sticky="w")
+        pad = dict(pady=(0, 10))
+        ttk.Label(g, text=t("pack_name"), style="Field.TLabel").grid(
+            row=0, column=0, sticky="w", **pad)
         ttk.Entry(g, textvariable=self.pack_name, width=28).grid(
-            row=0, column=1, sticky="w", padx=6)
+            row=0, column=1, sticky="w", padx=8, **pad)
         ttk.Checkbutton(g, text=t("is_dub"), variable=self.is_dub).grid(
-            row=0, column=2, padx=(16, 6))
-        ttk.Label(g, text=t("vheight")).grid(row=0, column=3, padx=(10, 4))
-        ttk.Combobox(g, textvariable=self.vheight, width=7, state="readonly",
-                     values=("1080", "720", "540", "480", "360")).grid(row=0, column=4)
+            row=0, column=2, padx=(16, 6), sticky="w", **pad)
+        vh = ttk.Frame(g)
+        vh.grid(row=0, column=3, columnspan=2, sticky="e", **pad)
+        ttk.Label(vh, text=t("vheight"), style="Field.TLabel").pack(
+            side="left", padx=(10, 8))
+        ttk.Combobox(vh, textvariable=self.vheight, width=6, state="readonly",
+                     values=("1080", "720", "540", "480", "360")).pack(
+            side="left")
 
-        ttk.Label(g, text=t("target_dir")).grid(row=1, column=0, sticky="w",
-                                                pady=(8, 0))
+        ttk.Label(g, text=t("target_dir"), style="Field.TLabel").grid(
+            row=1, column=0, sticky="w", **pad)
         ttk.Entry(g, textvariable=self.target_dir, width=52).grid(
-            row=1, column=1, columnspan=3, sticky="we", padx=6, pady=(8, 0))
-        ttk.Button(g, text=t("browse"), width=9,
+            row=1, column=1, columnspan=3, sticky="we", padx=8, **pad)
+        ttk.Button(g, text=t("browse"),
                    command=self._pick_target).grid(row=1, column=4,
-                                                   pady=(8, 0))
+                                                   sticky="we", **pad)
         self.chars_lbl = None
         if cvmode:
-            ttk.Label(g, text=t("pack_title")).grid(row=2, column=0, sticky="w",
-                                                    pady=(8, 0))
+            ttk.Label(g, text=t("pack_title"), style="Field.TLabel").grid(
+                row=2, column=0, sticky="w", **pad)
             ttk.Entry(g, textvariable=self.pack_title).grid(
-                row=2, column=1, columnspan=3, sticky="we", padx=6, pady=(8, 0))
+                row=2, column=1, columnspan=3, sticky="we", padx=8, **pad)
             ttk.Button(g, text=t("btn_icon"),
                        command=self._grab_pack_icon).grid(row=2, column=4,
-                                                          pady=(8, 0))
+                                                          sticky="we", **pad)
 
-            ttk.Label(g, text=t("pack_authors")).grid(row=3, column=0,
-                                                      sticky="w", pady=(8, 0))
+            ttk.Label(g, text=t("pack_authors"), style="Field.TLabel").grid(
+                row=3, column=0, sticky="w", **pad)
             ttk.Entry(g, textvariable=self.pack_authors, width=30).grid(
-                row=3, column=1, sticky="we", padx=6, pady=(8, 0))
+                row=3, column=1, sticky="we", padx=8, **pad)
             ttk.Label(g, text=t("authors_hint"), style="Dim.TLabel").grid(
-                row=3, column=2, columnspan=2, sticky="w", pady=(8, 0))
+                row=3, column=2, columnspan=2, sticky="w", **pad)
 
-            ttk.Label(g, text=t("pack_readme")).grid(row=4, column=0,
-                                                     sticky="w", pady=(8, 0))
+            ttk.Label(g, text=t("pack_readme"), style="Field.TLabel").grid(
+                row=4, column=0, sticky="w", **pad)
             ttk.Entry(g, textvariable=self.pack_readme).grid(
-                row=4, column=1, columnspan=3, sticky="we", padx=6, pady=(8, 0))
+                row=4, column=1, columnspan=3, sticky="we", padx=8, **pad)
 
             self.chars_lbl = ttk.Label(g, text=t("chars_none"),
                                        style="Dim.TLabel")
             self.chars_lbl.grid(row=5, column=1, columnspan=3, sticky="w",
-                                padx=6, pady=(8, 0))
+                                padx=8, **pad)
 
         g.columnconfigure(3, weight=1)
 
         act = ttk.Frame(step3)
-        act.pack(fill="x", pady=(10, 0))
+        act.pack(fill="x", pady=(6, 0))
         self.build_btn = ttk.Button(act, text=t("build"),
                                     style="Accent.TButton", command=self.start_build)
         self.build_btn.pack(side="left")
         self.install_btn = ttk.Button(act, text=t("install"),
                                       style="Go.TButton", command=self.install)
         self.install_btn.pack(side="left", padx=8)
-        ttk.Button(act, text=t("open_out"),
+        ttk.Button(act, text=t("open_out"), style="Ghost.TButton",
                    command=self._open_out).pack(side="left")
 
-        self.prog = ttk.Progressbar(root, mode="determinate", maximum=100)
-        self.prog.pack(fill="x", pady=(10, 4))
-        self.status = ttk.Label(root, text=t("ready"), style="Dim.TLabel")
-        self.status.pack(fill="x")
+        # ---------------- Fortschritt und Protokoll
+        logc = ttk.Frame(root, style="Card.TFrame", padding=(18, 14, 18, 16))
+        logc.pack(fill="both", expand=False)
+        srow = ttk.Frame(logc)
+        srow.pack(fill="x")
+        self.status = ttk.Label(srow, text=t("ready"), style="Status.TLabel")
+        self.status.pack(side="left")
+        self.prog = ttk.Progressbar(logc, mode="determinate", maximum=100)
+        self.prog.pack(fill="x", pady=(8, 10))
 
-        logf = ttk.Frame(root)
-        logf.pack(fill="both", expand=False, pady=(6, 0))
-        self.log = tk.Text(logf, height=8, bg="#15161c", fg="#93a0c0",
-                           insertbackground=FG, relief="flat",
-                           font=("Consolas", 9), wrap="none")
+        logf = ttk.Frame(logc)
+        logf.pack(fill="both", expand=False)
+        self.log = tk.Text(logf, height=7, bg=FIELD, fg=LOG_FG,
+                           insertbackground=FG, relief="flat", bd=0,
+                           padx=12, pady=10, highlightthickness=0,
+                           selectbackground=ACC, font=(MONO_FONT, 9),
+                           wrap="none")
         self.log.pack(side="left", fill="both", expand=True)
         lsb = ttk.Scrollbar(logf, orient="vertical", command=self.log.yview)
-        lsb.pack(side="left", fill="y")
+        lsb.pack(side="left", fill="y", padx=(4, 0))
         self.log.configure(yscrollcommand=lsb.set)
 
         self._sync_src()
@@ -1131,10 +1295,22 @@ class App(tk.Tk):
             pass
 
     def _check_tools(self):
+        # Im Hintergrund: yt-dlp und ffmpeg mehrfach zu starten dauert ein
+        # paar Sekunden - so lange soll das Fenster nicht auf sich warten
+        # lassen. _log geht ueber die Warteschlange, ist also threadsicher.
+        def work():
+            try:
+                self._check_tools_work()
+            except Exception:
+                self._log(traceback.format_exc())
+        threading.Thread(target=work, daemon=True).start()
+
+    def _check_tools_work(self):
         missing = []
         if not pc.find_tool("ffmpeg"):
             missing.append("ffmpeg")
-        if not pc.ytdlp():
+        yt = pc.ytdlp()
+        if not yt:
             missing.append("yt-dlp")
         if missing:
             self._log(t("missing", ", ".join(missing)))
@@ -1143,15 +1319,15 @@ class App(tk.Tk):
             self._log(t("ff_ready",
                         t("yes") if th else t("no_caps"),
                         t("yes") if vo else t("no_caps")))
+        if not yt:
+            return
         ver, age = pc.ytdlp_version()
         self._ytdlp_age = age
         if ver and age is not None:
-            yt = pc.ytdlp() or []
             where = yt[0] if len(yt) == 1 else os.path.dirname(sys.executable)
             self._log(t("ytdlp_ver", ver, age) + "   -   " + str(where))
             if age > 60:
                 self._log(t("ytdlp_old", age))
-
 
     def update_ytdlp(self):
         """Holt die aktuelle yt-dlp-Version nach."""
@@ -1175,7 +1351,8 @@ class App(tk.Tk):
                 self._log(t("upd_same", ver))
                 messagebox.showwarning(t("title"), t("upd_same", ver))
             else:
-                messagebox.showwarning(t("title"), t("upd_fail"))
+                messagebox.showwarning(t("title"),
+                                       t("ytdlp_fail", pc.console_python()))
         self._bg(work, on_done=done)
 
     # -------------------------------------------------- Thread-Kommunikation
@@ -1434,7 +1611,8 @@ class App(tk.Tk):
                 row.append(c.get("character", ""))
             row += ["%.3f" % c["start"], "%.3f" % c["end"],
                     "%.2f" % (c["end"] - c["start"]), c.get("caption", "")]
-            self.tree.insert("", "end", iid=str(i), values=tuple(row))
+            self.tree.insert("", "end", iid=str(i), values=tuple(row),
+                             tags=("odd",) if i % 2 else ())
         if self.selected is not None and 0 <= self.selected < len(self.clips):
             self.tree.selection_set(str(self.selected))
             self.tree.see(str(self.selected))
@@ -1492,7 +1670,7 @@ class App(tk.Tk):
             lbl.configure(image=self._thumb_img, text="", width=0)
         except Exception:
             lbl.configure(image="", text=os.path.basename(path),
-                          fg="#9aa0b5", width=0)
+                          fg=DIM, width=0)
 
     def _grab_char_image(self):
         """Einzelbild beim gewaehlten Clip holen und der Figur zuordnen."""
@@ -1702,11 +1880,17 @@ class App(tk.Tk):
         cv.delete("all")
         w = max(1, cv.winfo_width())
         h = max(1, cv.winfo_height())
-        mid = h / 2
+        top, bot = 10, h - 22               # Bereich der Welle, darunter Zeitachse
+        mid = (top + bot) / 2.0
 
         if not len(self.wave_data) or self.duration <= 0:
-            cv.create_text(w / 2, mid, fill="#5a6180", text=t("canvas_empty"),
-                           font=("Segoe UI", 11))
+            # Angedeutete Welle als Platzhalter, damit die Flaeche nicht tot wirkt.
+            for x in range(0, w, 6):
+                amp = 6 + 5 * abs(((x // 6) % 14) - 7) / 7.0
+                cv.create_line(x, mid - amp, x, mid + amp, fill="#1b1f33",
+                               width=3, capstyle="round")
+            cv.create_text(w / 2, mid, fill=DIM, text=t("canvas_empty"),
+                           font=(UI_FONT, 11))
             return
 
         span = max(1e-6, self.view_b - self.view_a)
@@ -1721,34 +1905,54 @@ class App(tk.Tk):
             peaks = pc.waveform_peaks(self.wave_data[a:b], w)
             self._peak_cache = (key, peaks)
 
+        # Clips als Flaechen hinter der Welle; welche Spalten in einem Clip
+        # liegen, bestimmt die Farbe der Welle darueber.
+        inside = [False] * len(peaks)
+        labels = []
         for i, c in enumerate(self.clips):
             if c["end"] < self.view_a or c["start"] > self.view_b:
                 continue
             x0, x1 = self._t2x(c["start"]), self._t2x(c["end"])
             sel = (i == self.selected)
-            cv.create_rectangle(x0, 6, x1, h - 16,
+            cv.create_rectangle(x0, top, x1, bot,
                                 fill=CLIP_SEL if sel else CLIP_FILL,
-                                outline=ACC2 if sel else "#4a628a",
+                                outline=ACC if sel else CLIP_EDGE,
                                 width=2 if sel else 1)
-            if x1 - x0 > 34:
-                cv.create_text(x0 + 5, 16, anchor="w", fill="#dfe4f5",
-                               text="%d" % (i + 1), font=("Segoe UI Semibold", 9))
+            # Griffe an den Raendern: zeigen, dass man hier ziehen kann.
+            for gx in (x0, x1):
+                cv.create_line(gx, mid - 12, gx, mid + 12,
+                               fill=ACC_HI if sel else CLIP_EDGE, width=3,
+                               capstyle="round")
+            for x in range(max(0, int(x0)), min(len(inside), int(x1) + 1)):
+                inside[x] = True
+            if x1 - x0 > 26:
+                labels.append((x0, i + 1, sel))
 
+        cv.create_line(0, mid, w, mid, fill="#1b1f33")
+        amp = (bot - top) / 2.0 - 4
         for x, (lo, hi) in enumerate(peaks):
-            y0 = mid - hi * (mid - 20)
-            y1 = mid - lo * (mid - 20)
+            y0 = mid - hi * amp
+            y1 = mid - lo * amp
             if abs(y1 - y0) < 1:
                 y1 = y0 + 1
-            cv.create_line(x, y0, x, y1, fill=WAVE)
-        cv.create_line(0, mid, w, mid, fill="#3a3d4d")
+            cv.create_line(x, y0, x, y1, fill=WAVE_IN if inside[x] else WAVE)
+
+        # Nummern als kleine Plaketten oben links im Clip.
+        for x0, nr, sel in labels:
+            txt = str(nr)
+            bw = 10 + 7 * len(txt)
+            cv.create_rectangle(x0 + 4, top + 4, x0 + 4 + bw, top + 20,
+                                fill=ACC if sel else "#2c2566", outline="")
+            cv.create_text(x0 + 4 + bw / 2, top + 12, text=txt,
+                           fill="#ffffff", font=(UI_FONT_SB, 8))
 
         step = self._nice_step(span)
         tt = (int(self.view_a / step)) * step
         while tt <= self.view_b:
             x = self._t2x(tt)
-            cv.create_line(x, h - 14, x, h, fill="#4a4e63")
-            cv.create_text(x + 3, h - 8, anchor="w", fill="#7d84a0",
-                           text=pc.fmt_time(tt)[:-2], font=("Consolas", 8))
+            cv.create_line(x, h - 18, x, h - 12, fill=EDGE)
+            cv.create_text(x + 4, h - 9, anchor="w", fill=MUTED,
+                           text=pc.fmt_time(tt)[:-2], font=(MONO_FONT, 8))
             tt += step
 
         if self.duration > span:
@@ -1811,8 +2015,9 @@ class App(tk.Tk):
         else:
             self.canvas.delete("newsel")
             x0, x1 = self._t2x(ref), event.x
-            self.canvas.create_rectangle(x0, 6, x1, self.canvas.winfo_height() - 16,
-                                         outline=ACC2, width=2, tags="newsel")
+            self.canvas.create_rectangle(x0, 10, x1, self.canvas.winfo_height() - 22,
+                                         outline=ACC2, width=2, dash=(4, 3),
+                                         tags="newsel")
             return
         self.draw_wave()
 
@@ -2048,4 +2253,5 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
+    appwin.set_app_id("DubForge")
     App().mainloop()

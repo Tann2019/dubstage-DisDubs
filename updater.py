@@ -17,7 +17,8 @@ Sicherheitsgrenzen:
   - Groessenlimit fuer den Download
   - keine Pfade mit ".." oder absoluten Angaben aus dem Archiv
   - jede .py/.pyw aus dem Archiv wird vor dem Tausch compiliert
-  - packs/, dubs/, tools/ und die Einstellungen werden nie angefasst
+  - packs/, dubs/, tools/, runtime/ und die Einstellungen werden nie
+    angefasst
 """
 
 import io
@@ -35,7 +36,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 # ------------------------------------------------------------------ Eckdaten
-VERSION = "1.2.1"
+VERSION = "1.3.0"
 REPO = "xmrius/dubstage"
 
 API_LATEST = "https://api.github.com/repos/%s/releases/latest" % REPO
@@ -52,10 +53,12 @@ ALLOWED_HOSTS = ("api.github.com", "github.com", "codeload.github.com",
                  "release-assets.githubusercontent.com")
 
 # Was beim Tausch ueberschrieben werden darf.
-OK_EXT = (".pyw", ".py", ".bat", ".cmd", ".md", ".png", ".txt")
+OK_EXT = (".pyw", ".py", ".bat", ".cmd", ".md", ".png", ".ico", ".txt")
 OK_NAMES = ("LICENSE",)
-SKIP_DIRS = ("packs", "dubs", "tools", ".git", ".github", "__pycache__",
-             ".venv", "venv")
+# runtime/ ist das Python, das Setup.exe mitbringt; installer/ und dev/
+# braucht nur, wer Setup.exe oder die Screenshots selbst baut.
+SKIP_DIRS = ("packs", "dubs", "tools", "runtime", "installer", "dev", ".git",
+             ".github", "__pycache__", ".venv", "venv")
 SKIP_FILES = ("dubforge_settings.json", "dubstage_settings.json",
               "push_log.txt", "RELEASE_NOTES.md", "Push to GitHub.bat")
 
@@ -298,14 +301,36 @@ endlocal
 """
 
 
+def installed(app_dir):
+    """Mit Setup.exe installiert? Dann liegt das eigene Python in runtime/."""
+    return os.path.isfile(os.path.join(app_dir, "runtime", "pythonw.exe"))
+
+
+def _gui_python():
+    """Der laufende Interpreter, als pythonw.exe wenn es ihn daneben gibt."""
+    exe = sys.executable or ""
+    if os.path.basename(exe).lower() == "python.exe":
+        cand = os.path.join(os.path.dirname(exe), "pythonw.exe")
+        if os.path.isfile(cand):
+            return cand
+    return exe
+
+
 def _restart_command(app_dir, which):
-    """Wie die App nach dem Tausch wieder gestartet wird."""
+    """
+    Wie die App nach dem Tausch wieder gestartet wird: mit genau dem Python,
+    das jetzt laeuft. Ueber "Start ... .bat" zu gehen hiesse, ein anderes
+    Python aus dem PATH zu erwischen - bei einer Installation mit Setup.exe
+    eines ohne die Pakete, die die App braucht.
+    """
+    script = os.path.join(app_dir, "%s.pyw" % which)
+    exe = _gui_python()
+    if exe:
+        return '"%s" "%s"' % (exe, script)
     starter = os.path.join(app_dir, "Start %s.bat" % which)
     if os.path.isfile(starter):
         return '"%s"' % starter
-    script = os.path.join(app_dir, "%s.pyw" % which)
-    exe = sys.executable or "pythonw.exe"
-    return '"%s" "%s"' % (exe, script)
+    return '"pythonw.exe" "%s"' % script
 
 
 def swap_text(staged_root, app_dir, bak, log, which, tag, pid):
@@ -320,9 +345,10 @@ def swap_text(staged_root, app_dir, bak, log, which, tag, pid):
             .replace("__RESTART__", _restart_command(app_dir, which)))
 
 
-def prune(staged_root):
+def prune(staged_root, drop_ext=()):
     """Alles aus dem Zwischenstand entfernen, was nicht getauscht werden darf."""
-    keep = set(collect(staged_root))
+    keep = set(rel for rel in collect(staged_root)
+               if not rel.lower().endswith(tuple(drop_ext)))
     for base, dirs, files in os.walk(staged_root, topdown=False):
         for f in files:
             rel = os.path.relpath(os.path.join(base, f),
@@ -347,8 +373,9 @@ def apply(staged_root, app_dir, which="DubForge", tag=""):
                           "vorgesehen.")
 
     # Nur erlaubte Dateien stehen lassen, damit xcopy nichts Unerwartetes
-    # ins Projekt kopiert.
-    prune(staged_root)
+    # ins Projekt kopiert. Eine Installation per Setup.exe startet ueber
+    # Verknuepfungen - die .bat-Starter wuerden dort nur herumliegen.
+    prune(staged_root, (".bat", ".cmd") if installed(app_dir) else ())
 
     stamp = time.strftime("%Y%m%d_%H%M%S")
     tmp = tempfile.gettempdir()

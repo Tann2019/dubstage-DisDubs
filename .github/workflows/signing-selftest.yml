@@ -1,0 +1,41 @@
+# Prueft den Signierweg von installer/build.ps1 mit einem Wegwerf-Zertifikat,
+# damit er funktioniert, sobald ein echtes Zertifikat hinterlegt wird.
+# Das Ergebnis wird nirgends veroeffentlicht.
+name: Signing self-test
+
+on:
+  push:
+    branches: ["**"]
+    paths: ["installer/**", ".github/workflows/signing-selftest.yml"]
+  workflow_dispatch:
+
+jobs:
+  sign:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Throwaway certificate
+        shell: pwsh
+        run: |
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=DubStage Self-Test" -CertStoreLocation Cert:\CurrentUser\My
+          $pw = ConvertTo-SecureString -String "selftest-$(Get-Random)" -Force -AsPlainText
+          $pfx = Join-Path $env:RUNNER_TEMP "test.pfx"
+          Export-PfxCertificate -Cert $cert -FilePath $pfx -Password $pw | Out-Null
+          $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($pw))
+          "CODESIGN_PFX_BASE64=$([Convert]::ToBase64String([IO.File]::ReadAllBytes($pfx)))" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "CODESIGN_PASSWORD=$plain" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build signed
+        shell: pwsh
+        run: ./installer/build.ps1
+
+      - name: Check signature
+        shell: pwsh
+        run: |
+          $exe = (Get-ChildItem dist\*.exe | Select-Object -First 1).FullName
+          $sig = Get-AuthenticodeSignature $exe
+          $sig | Format-List Status, StatusMessage
+          if (-not $sig.SignerCertificate -or $sig.SignerCertificate.Subject -ne "CN=DubStage Self-Test") {
+            throw "Setup.exe ist nicht signiert"
+          }

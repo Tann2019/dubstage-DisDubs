@@ -4,9 +4,15 @@ Szenen aus Videos selbst nachsprechen. **DubForge** zerlegt ein Video in einspre
 
 *English version: `README_EN.md`*
 
+<img src="docs/dubforge.png" alt="DubForge: Wellenform mit erkannten Clips und Untertiteln" width="900">
+
+<img src="docs/dubstage-record.png" alt="DubStage: Aufnahme einer Zeile, der eigene Take live über dem Original" width="900">
+
+<sub>Bildmaterial: <i>Tears of Steel</i> — (CC) Blender Foundation | <a href="https://mango.blender.org">mango.blender.org</a>, CC BY 3.0. Untertitel von der eingebauten Spracherkennung in DubForge erzeugt. Die Screenshots zeigen die englische Oberfläche.</sub>
+
 ## Automatische Untertitel
 
-Die optionale Spracherkennung in `Setup.bat` installieren, alternativ mit
+Die optionale Spracherkennung im Setup (oder in `Setup.bat`) auswählen, alternativ mit
 `py -m pip install -r requirements-transcription.txt`. Nach der Analyse den Code
 der gesprochenen Sprache eingeben (`fr` Franzoesisch, `en` Englisch, `de` Deutsch;
 weitere Whisper-Sprachcodes sind moeglich) und **Untertitel generieren** anklicken.
@@ -41,12 +47,14 @@ bleiben unveraendert. Clips ohne zugeordnete Sprache werden gemeldet.
 
 ## Einmalig einrichten
 
-1. Alle Dateien in einen Ordner legen, z. B. `F:\DubForge`
-2. **`Setup.bat`** doppelklicken
+1. **`DubStage-Setup-<Version>.exe`** von der [Release-Seite](https://github.com/xmrius/dubstage/releases/latest) laden
+2. Ausführen — ohne Adminrechte, ein eigenes Python ist nicht nötig
 
-Das Setup holt Python-Pakete, lädt ffmpeg in einen `tools`-Unterordner und fragt, ob Demucs für die Stimmen-Trennung installiert werden soll. Demucs zieht PyTorch nach — mehrere hundert MB bis ~2 GB. Wenn du Nein sagst, läuft alles weiter, nur ohne Backing-Track.
+Das Setup bringt sein eigenes Python mit allen Paketen mit, lädt ffmpeg und bietet zwei optionale Teile an: Demucs für die Stimmen-Trennung (zieht PyTorch nach, bis ~2 GB — ohne läuft alles weiter, nur ohne Backing-Track) und die Spracherkennung für automatische Untertitel. Beides lässt sich später durch erneutes Ausführen des Setups nachinstallieren.
 
-Danach: **`Start DubForge.bat`** zum Bauen, **`Start DubStage.bat`** zum Einsprechen.
+Danach **DubForge** zum Bauen und **DubStage** zum Einsprechen starten — aus dem Startmenü oder vom Desktop.
+
+*Ohne Installer:* alle Dateien in einen Ordner legen, **`Setup.bat`** doppelklicken (braucht Python 3.9+), dann **`Start DubForge.bat`** und **`Start DubStage.bat`**.
 
 ---
 
@@ -172,9 +180,11 @@ Update-Pruefungen lassen sich abschalten mit `"check_updates": false` in
 
 ## Wenn etwas klemmt
 
+**SmartScreen warnt vor dem Setup** — Es ist nicht signiert. *Weitere Informationen → Trotzdem ausführen*.
+
 **Windows blockiert die BAT-Dateien** — Rechtsklick → Eigenschaften → unten **Zulassen**. Oder in PowerShell im Ordner: `Get-ChildItem -Recurse | Unblock-File`. Wichtig: die Dateien vorher aus dem Download-Ordner in einen normalen Ordner verschieben.
 
-**„ffmpeg nicht gefunden"** — Setup.bat nochmal laufen lassen. Klappt das nicht: bei `gyan.dev/ffmpeg/builds` die **release full** ziehen und `ffmpeg.exe`, `ffprobe.exe`, `ffplay.exe` aus `bin` in `tools\` legen.
+**„ffmpeg nicht gefunden"** — Das Setup (oder Setup.bat) nochmal laufen lassen. Klappt das nicht: bei `gyan.dev/ffmpeg/builds` die **release full** ziehen und `ffmpeg.exe`, `ffprobe.exe`, `ffplay.exe` aus `bin` in `tools\` legen.
 
 **YouTube-Download schlägt fehl** — Fast immer ist yt-dlp veraltet. YouTube ändert ständig etwas an der Auslieferung, deshalb hält das Werkzeug nur wenige Wochen. In DubForge oben rechts auf **yt-dlp aktualisieren** klicken; die Version samt Alter steht beim Start im Protokoll. Von Hand geht es im Terminal mit `py -m pip install --upgrade yt-dlp`.
 

@@ -9,6 +9,73 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 Nothing yet.
 
+## [1.3.0] - 2026-09-28
+
+### Added
+
+- **A real Windows installer.** `DubStage-Setup-<version>.exe` installs both
+  tools per user (no admin rights), brings its own Python with every package,
+  downloads ffmpeg with a progress bar, and offers Demucs and speech recognition
+  as optional components. DubForge and DubStage appear in the Start menu (and
+  optionally on the desktop) with their own icons, and uninstall from
+  *Settings → Apps*, asking before packs and recordings are deleted.
+  `installer/build.ps1` builds it; GitHub Actions builds it on every push and
+  attaches it to every published release. `Setup.bat` stays for running from
+  source.
+- **App icons.** Both windows and their taskbar buttons show their own icon
+  instead of Python's, and Windows no longer groups the two tools under
+  "Python".
+
+### Changed
+
+- **DubForge has a new look** that matches DubStage: the three steps sit on
+  numbered cards, the target format is a segmented switch in the header next to
+  the logo, buttons, fields and sliders are flat and consistent, scrollbars are
+  slim, the clip table has alternating rows, and the waveform lights up inside
+  each clip, with drag handles on the edges and numbered badges.
+- **DubStage's menu** shows the logo and a preview frame for every pack.
+- **While recording, DubStage shows a small "● REC" badge** in the corner of
+  the video instead of a large banner across it, so the mouth you are syncing
+  to stays visible. The countdown sits on a solid badge in the middle.
+- **Screenshots** in the READMEs show the new interface, rendered on Windows
+  by `dev/screenshots.py` with footage from *Tears of Steel* (CC BY 3.0).
+- German texts use real umlauts ("Clips prüfen", "Löschen") instead of
+  "ue"/"oe".
+
+
+### Fixed
+
+- **A pack name of `..` deleted the program folder.** Building a pack first
+  removes the old one of the same name; `..` resolved to the folder holding the
+  tools themselves, `.` to all packs. Names are now stripped of leading and
+  trailing dots, and Windows device names such as `CON` or `NUL` are escaped.
+- **Installing a pack into its own folder deleted it.** Choosing `packs/` as the
+  target removed the pack and then failed to copy it. That case is now a no-op,
+  and a target inside the pack is refused.
+- **A failed MP4 export in DubStage threw away every take.** The error sent you
+  back to the menu, and starting again cleared all recordings. You now stay on
+  the finale and can simply save again.
+- **The finale could hang half-drawn** when the video has no audio track and the
+  pack no backing track; DubStage now reports the problem and stays on stage.
+- **"Update yt-dlp" showed a message with a literal `%s`** when nothing
+  changed: two messages shared one key, and the app-update text won. The hint
+  now also names the Python that actually needs updating.
+- **Audio files with a time range could not be analysed** — cutting insisted on
+  a video stream.
+- **Demucs could fail to read audio** because ffmpeg in `tools/` was not on its
+  PATH, which sent it down a torchaudio fallback that newer versions no longer
+  support. `tools/` is now passed along, and `requirements-demucs.txt` keeps
+  torch/torchaudio below 2.9 until Demucs supports it.
+- **DubStage's menu ran ffprobe for every pack on every redraw**, e.g. while
+  resizing the window; the duration is now read once. Redrawing also no longer
+  resets a microphone you picked but have not tested yet.
+- **DubForge opened with a delay of several seconds** while it checked ffmpeg
+  and yt-dlp; that check now runs in the background.
+- **After a self-update, the app restarted through `Start ….bat`**, which picks
+  whichever Python is first on the PATH. It now restarts with the Python it was
+  running on. As with every updater fix, this takes effect from the update
+  *after* the one that installs it.
+
 ## [1.2.1] - 2026-08-20
 
 ### Fixed
@@ -232,7 +299,8 @@ switchable at runtime.
   clip lengths it lands one sample short, which previously raised mid-playback
   and froze the interface.
 
-[Unreleased]: https://github.com/xmrius/dubstage/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/xmrius/dubstage/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/xmrius/dubstage/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/xmrius/dubstage/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/xmrius/dubstage/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/xmrius/dubstage/compare/v1.0.1...v1.1.0
