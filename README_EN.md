@@ -14,6 +14,10 @@ Dub scenes from video yourself. **DubForge** cuts a video into speakable clips, 
 
 ## One-time setup
 
+**Easiest:** download **`DubForge-DisDubs-Setup-<version>.exe`** from the [releases page](https://github.com/Tann2019/dubstage-DisDubs/releases/latest) and run it. No admin rights, no Python needed: it brings its own Python, downloads ffmpeg, offers Demucs and speech recognition as optional parts, and puts DubForge and DubStage in the Start menu. Windows SmartScreen may warn because the setup is not code-signed: *More info → Run anyway*.
+
+**Without the installer** (needs Python 3.9+):
+
 1. Put all files into one folder, e.g. `F:\DubForge`
 2. Double-click **`Start DubForge.bat`** to build, **`Start DubStage.bat`** to record
 

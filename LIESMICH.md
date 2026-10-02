@@ -50,6 +50,10 @@ bleiben unveraendert. Clips ohne zugeordnete Sprache werden gemeldet.
 
 ## Einmalig einrichten
 
+**Am einfachsten:** **`DubForge-DisDubs-Setup-<Version>.exe`** von der [Release-Seite](https://github.com/Tann2019/dubstage-DisDubs/releases/latest) laden und ausführen. Ohne Adminrechte, ohne eigenes Python: Es bringt sein eigenes Python mit, lädt ffmpeg, bietet Demucs und die Spracherkennung als optionale Teile an und legt DubForge und DubStage ins Startmenü. Windows SmartScreen kann warnen, weil das Setup nicht signiert ist: *Weitere Informationen → Trotzdem ausführen*.
+
+**Ohne Installer** (braucht Python 3.9+):
+
 1. Alle Dateien in einen Ordner legen, z. B. `F:\DubForge`
 2. **`Start DubForge.bat`** zum Bauen bzw. **`Start DubStage.bat`** zum Einsprechen doppelklicken
 

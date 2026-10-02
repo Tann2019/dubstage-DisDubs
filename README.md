@@ -43,19 +43,16 @@
 
 ## Install
 
-1. Download the files into one folder
-2. Double-click `Start DubForge.bat` (or `Start DubStage.bat`)
-
-That is all. The first start runs the setup by itself — Python packages, ffmpeg
-into `tools/`, and desktop shortcuts if you want them — then opens the tool.
-Every start after that goes straight to the tool. You can also run `Setup.bat`
-on its own if you would rather set up first.
+1. Download **`DubForge-DisDubs-Setup-<version>.exe`** from the [latest release](https://github.com/Tann2019/dubstage-DisDubs/releases/latest)
+2. Run it — no admin rights and no Python installation needed
+3. Start **DubForge** or **DubStage** from the Start menu or the desktop
 
 The setup brings its own Python with every package the tools need, downloads
 ffmpeg, and creates Start-menu (and optionally desktop) shortcuts. It installs
-per user into `%LOCALAPPDATA%\Programs\DubStage`; uninstall it from
-*Settings → Apps* like any other program — you are asked whether your packs and
-recordings should go too.
+per user into `%LOCALAPPDATA%\Programs\DubForge-DisDubs` — next to an original
+DubStage install, never over it. Uninstall it from *Settings → Apps* like any
+other program; you are asked whether your packs and recordings should go too.
+Updates arrive inside the app, as before.
 
 Two parts are optional and can be picked in the setup (or added later by
 running it again): [Demucs](https://github.com/adefossez/demucs) for vocal
@@ -68,11 +65,13 @@ Windows SmartScreen may warn about the setup because it is not code-signed:
 ### Without the installer
 
 For development, or if you prefer your own Python (3.9+): put the files into one
-folder, run `Setup.bat`, then `Start DubForge.bat` / `Start DubStage.bat`.
+folder and double-click `Start DubForge.bat` (or `Start DubStage.bat`). The
+first start runs `Setup.bat` by itself — Python packages, ffmpeg into `tools/`,
+desktop shortcuts if you want them — then opens the tool.
 
 ### Building the setup yourself
 
-`installer\build.ps1` builds `dist\DubStage-Setup-<version>.exe` on Windows
+`installer\build.ps1` builds `dist\DubForge-DisDubs-Setup-<version>.exe` on Windows
 with [Inno Setup](https://jrsoftware.org/isinfo.php) 6.3+. GitHub Actions runs
 the same script on every push and attaches the setup to each published release.
 

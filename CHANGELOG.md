@@ -7,6 +7,21 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-10-02
+
+### Added
+
+- **A Windows installer.** `DubForge-DisDubs-Setup-<version>.exe` installs
+  DubForge and DubStage per user (no admin rights), brings its own Python with
+  every package, downloads ffmpeg, offers Demucs and speech recognition as
+  optional parts, and puts both tools in the Start menu (and optionally on the
+  desktop). It installs into `%LOCALAPPDATA%\Programs\DubForge-DisDubs` with
+  its own identity, so it never replaces an original DubStage install, and
+  uninstalls from *Settings → Apps*, asking before packs and recordings are
+  deleted. GitHub Actions builds it for every version tag and attaches it to
+  the release. `Start DubForge.bat` / `Setup.bat` keep working for running
+  from source.
+
 ## [1.6.0] - 2026-10-02
 
 ### Changed
@@ -561,7 +576,8 @@ switchable at runtime.
   clip lengths it lands one sample short, which previously raised mid-playback
   and froze the interface.
 
-[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.1...v1.4.2
