@@ -21,9 +21,17 @@ permissions:
 
 jobs:
   setup-exe:
-    # Nur im Original-Repo - der Fork baut keinen Setup.exe.
-    # Upstream only - the DisDubs fork ships no Setup.exe.
-    if: github.repository == 'xmrius/dubstage'
+    # Original und DisDubs-Fork bauen ihr eigenes Setup.exe (installer/
+    # DubStage.iss traegt die Fork-Kennungen). Im Fork entsteht das Release
+    # beim Tag-Push; ein danach veroeffentlichtes Release loest keinen
+    # zweiten Lauf aus.
+    # Upstream and the DisDubs fork each build their own Setup.exe. In the
+    # fork the release comes from the tag push; publishing it does not start
+    # a second build.
+    if: >-
+      github.repository == 'xmrius/dubstage' ||
+      (github.repository == 'Tann2019/dubstage-DisDubs' &&
+       github.event_name != 'release')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,16 +93,20 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
           $files = (Get-ChildItem dist\*.exe).FullName
-          $notes = ".github/release-notes/$tag.md"
-          if (-not (Test-Path $notes)) { throw "$notes fehlt" }
-          $lines = Get-Content $notes -Encoding utf8
-          $title = $lines[0] -replace '^#\s*', ''
-          $body = Join-Path $env:RUNNER_TEMP "body.md"
-          ($lines | Select-Object -Skip 1) -join "`n" | Set-Content $body -Encoding utf8
+          # Gibt es das Release schon (von Hand angelegt), nur anhaengen -
+          # Release-Notes braucht es nur zum Anlegen.
+          # Release already there (made by hand)? Just attach; the notes
+          # file is only needed to create one.
           gh release view $tag 2>$null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $files --clobber
           } else {
+            $notes = ".github/release-notes/$tag.md"
+            if (-not (Test-Path $notes)) { throw "$notes fehlt" }
+            $lines = Get-Content $notes -Encoding utf8
+            $title = $lines[0] -replace '^#\s*', ''
+            $body = Join-Path $env:RUNNER_TEMP "body.md"
+            ($lines | Select-Object -Skip 1) -join "`n" | Set-Content $body -Encoding utf8
             gh release create $tag $files --title $title --notes-file $body --verify-tag
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -1,6 +1,6 @@
 <#
-  build.ps1 - baut dist\DubStage-Setup-<Version>.exe
-  build.ps1 - builds dist\DubStage-Setup-<version>.exe
+  build.ps1 - baut dist\DubForge-DisDubs-Setup-<Version>.exe
+  build.ps1 - builds dist\DubForge-DisDubs-Setup-<version>.exe
 
   Schritte / steps:
     1. eigenstaendiges Python (python-build-standalone, mit tkinter) laden,
@@ -50,7 +50,7 @@ if (-not $Version) {
     if (-not $m) { throw "VERSION in updater.py nicht gefunden." }
     $Version = $m.Matches[0].Groups[1].Value
 }
-Step "DubStage $Version"
+Step "DubForge DisDubs $Version"
 
 # ------------------------------------------------------------------ Python
 New-Item -ItemType Directory -Force -Path $Build | Out-Null
@@ -133,7 +133,7 @@ if ($env:CODESIGN_PFX_BASE64) {
     [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CODESIGN_PFX_BASE64))
     # $q und $f ersetzt Inno Setup selbst: Anfuehrungszeichen und Zieldatei.
     $cmd = '$q' + $signtool.FullName + '$q sign /f $q' + $pfx + '$q /p $q' + $env:CODESIGN_PASSWORD +
-           '$q /fd sha256 /tr http://timestamp.digicert.com /td sha256 /d $qDubStage Setup$q $f'
+           '$q /fd sha256 /tr http://timestamp.digicert.com /td sha256 /d $qDubForge DisDubs Setup$q $f'
     $isccArgs += @("/DSign", "/Ssigntool=$cmd")
     Step "Signieren eingeschaltet ($($signtool.FullName))"
 }
@@ -146,5 +146,5 @@ try {
     if ($pfx -and (Test-Path $pfx)) { Remove-Item $pfx -Force }
 }
 
-$out = Join-Path $Root "dist\DubStage-Setup-$Version.exe"
+$out = Join-Path $Root "dist\DubForge-DisDubs-Setup-$Version.exe"
 Step ("Fertig: {0} ({1:N0} MB)" -f $out, ((Get-Item $out).Length / 1MB))

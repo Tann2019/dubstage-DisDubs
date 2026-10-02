@@ -14,10 +14,11 @@ import os
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(APP_DIR, "assets")
 
-# Muss mit AppUserModelID in installer/DubStage.iss uebereinstimmen.
+# Muss mit AumidForge/AumidStage in installer/DubStage.iss uebereinstimmen.
+# Must match AumidForge/AumidStage in installer/DubStage.iss.
 APP_IDS = {
-    "DubForge": "xmrius.DubStage.DubForge",
-    "DubStage": "xmrius.DubStage.DubStage",
+    "DubForge": "Tann2019.DisDubs.DubForge",
+    "DubStage": "Tann2019.DisDubs.DubStage",
 }
 
 
@@ -28,7 +29,7 @@ def set_app_id(which):
     try:
         import ctypes
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-            APP_IDS.get(which, "xmrius.DubStage." + which))
+            APP_IDS.get(which, "Tann2019.DisDubs." + which))
     except Exception:
         pass
 

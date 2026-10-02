@@ -7,7 +7,7 @@
 ;  build\runtime an und uebergibt die Version.
 ;
 ;  Was die Installation macht:
-;    - installiert pro Benutzer nach %LOCALAPPDATA%\Programs\DubStage,
+;    - installiert pro Benutzer nach %LOCALAPPDATA%\Programs\DubForge-DisDubs,
 ;      ohne Adminrechte. Der Ordner bleibt beschreibbar - packs/, dubs/,
 ;      Einstellungen und der eingebaute Updater brauchen das.
 ;    - bringt ein eigenes Python mit allen Grundpaketen mit (runtime\),
@@ -26,15 +26,22 @@
   #define AppVersion "0.0.0"
 #endif
 
-#define AppName      "DubStage"
-#define AppPublisher "xmrius"
-#define AppURL       "https://github.com/xmrius/dubstage"
+; Der DisDubs-Fork installiert neben einem Original-DubStage, nicht darueber:
+; eigene AppId, eigener Ordner, eigene Taskleisten-Kennungen (appwin.py).
+; The DisDubs fork installs beside an original DubStage, never over it: own
+; AppId, own folder, own taskbar IDs (appwin.py).
+#define AppName      "DubForge DisDubs"
+#define AppDir       "DubForge-DisDubs"
+#define AppPublisher "Tann2019"
+#define AppURL       "https://github.com/Tann2019/dubstage-DisDubs"
+#define AumidForge   "Tann2019.DisDubs.DubForge"
+#define AumidStage   "Tann2019.DisDubs.DubStage"
 #define Root         ".."
 #define Runtime      "..\build\runtime"
 
 [Setup]
 ; Nie aendern - daran erkennt Windows spaetere Versionen als Update.
-AppId={{3917C80D-DCDB-4BF0-AD51-D2368007F5C4}
+AppId={{3B519D0E-8665-4F30-935D-4864A1687EFC}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
@@ -44,12 +51,12 @@ AppSupportURL={#AppURL}/issues
 AppUpdatesURL={#AppURL}/releases
 VersionInfoVersion={#AppVersion}
 VersionInfoDescription={#AppName} Setup
-UninstallDisplayName=DubStage & DubForge
-UninstallDisplayIcon={app}\assets\dubstage.ico
+UninstallDisplayName=DubForge & DubStage (DisDubs)
+UninstallDisplayIcon={app}\assets\dubforge.ico
 
 ; Pro Benutzer, ohne UAC-Abfrage.
 PrivilegesRequired=lowest
-DefaultDirName={localappdata}\Programs\{#AppName}
+DefaultDirName={localappdata}\Programs\{#AppDir}
 DisableProgramGroupPage=yes
 DisableDirPage=auto
 ArchitecturesAllowed=x64compatible
@@ -57,8 +64,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 
 OutputDir={#Root}\dist
-OutputBaseFilename=DubStage-Setup-{#AppVersion}
-SetupIconFile={#Root}\assets\dubstage.ico
+OutputBaseFilename={#AppDir}-Setup-{#AppVersion}
+SetupIconFile={#Root}\assets\dubforge.ico
 WizardStyle=modern
 WizardImageFile=wizard-large-164.bmp,wizard-large-246.bmp,wizard-large-328.bmp
 WizardSmallImageFile=wizard-small-55.bmp,wizard-small-83.bmp,wizard-small-110.bmp
@@ -150,10 +157,10 @@ Source: "{#Root}\assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "{#Runtime}\*"; DestDir: "{app}\runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\DubForge"; Filename: "{app}\runtime\pythonw.exe"; Parameters: """{app}\DubForge.pyw"""; WorkingDir: "{app}"; IconFilename: "{app}\assets\dubforge.ico"; Comment: "{cm:CommentForge}"; AppUserModelID: "xmrius.DubStage.DubForge"
-Name: "{autoprograms}\DubStage"; Filename: "{app}\runtime\pythonw.exe"; Parameters: """{app}\DubStage.pyw"""; WorkingDir: "{app}"; IconFilename: "{app}\assets\dubstage.ico"; Comment: "{cm:CommentStage}"; AppUserModelID: "xmrius.DubStage.DubStage"
-Name: "{autodesktop}\DubForge"; Filename: "{app}\runtime\pythonw.exe"; Parameters: """{app}\DubForge.pyw"""; WorkingDir: "{app}"; IconFilename: "{app}\assets\dubforge.ico"; Comment: "{cm:CommentForge}"; AppUserModelID: "xmrius.DubStage.DubForge"; Tasks: desktopicon
-Name: "{autodesktop}\DubStage"; Filename: "{app}\runtime\pythonw.exe"; Parameters: """{app}\DubStage.pyw"""; WorkingDir: "{app}"; IconFilename: "{app}\assets\dubstage.ico"; Comment: "{cm:CommentStage}"; AppUserModelID: "xmrius.DubStage.DubStage"; Tasks: desktopicon
+Name: "{autoprograms}\DubForge"; Filename: "{app}\runtime\pythonw.exe"; Parameters: """{app}\DubForge.pyw"""; WorkingDir: "{app}"; IconFilename: "{app}\assets\dubforge.ico"; Comment: "{cm:CommentForge}"; AppUserModelID: "{#AumidForge}"
+Name: "{autoprograms}\DubStage"; Filename: "{app}\runtime\pythonw.exe"; Parameters: """{app}\DubStage.pyw"""; WorkingDir: "{app}"; IconFilename: "{app}\assets\dubstage.ico"; Comment: "{cm:CommentStage}"; AppUserModelID: "{#AumidStage}"
+Name: "{autodesktop}\DubForge"; Filename: "{app}\runtime\pythonw.exe"; Parameters: """{app}\DubForge.pyw"""; WorkingDir: "{app}"; IconFilename: "{app}\assets\dubforge.ico"; Comment: "{cm:CommentForge}"; AppUserModelID: "{#AumidForge}"; Tasks: desktopicon
+Name: "{autodesktop}\DubStage"; Filename: "{app}\runtime\pythonw.exe"; Parameters: """{app}\DubStage.pyw"""; WorkingDir: "{app}"; IconFilename: "{app}\assets\dubstage.ico"; Comment: "{cm:CommentStage}"; AppUserModelID: "{#AumidStage}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\runtime\pythonw.exe"; Parameters: """{app}\DubStage.pyw"""; WorkingDir: "{app}"; Description: "{cm:LaunchStage}"; Flags: nowait postinstall skipifsilent
