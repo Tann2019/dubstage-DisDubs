@@ -33,6 +33,27 @@ def set_app_id(which):
         pass
 
 
+def set_dpi_aware():
+    """Vor dem ersten Fenster: in echten Pixeln zeichnen statt von Windows
+    hochgezogen (und dabei unscharf) zu werden. Wer das ruft, muss seine
+    Pixelmasse selbst skalieren - DubForge tut es mit px().
+    Before the first window: draw in real pixels instead of being stretched
+    (and blurred) by Windows. The caller has to scale its own pixel sizes."""
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        try:
+            # systemweit, nicht je Monitor: Tk 8.6 folgt keinem Monitorwechsel
+            # system-wide, not per monitor: Tk 8.6 does not follow monitor moves
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            ctypes.windll.user32.SetProcessDPIAware()
+        return True
+    except Exception:
+        return False
+
+
 def set_icon(root, which):
     """Symbol fuer das Hauptfenster und alle Dialoge danach."""
     stem = os.path.join(ASSETS, which.lower())

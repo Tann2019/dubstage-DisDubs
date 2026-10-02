@@ -7,6 +7,34 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-02
+
+### Changed
+
+- **DubForge has a new look, taken from DisDubs' cutting room.** Neutral
+  greys with elevation by lighter surface, edge-code amber for whatever you can
+  act on (primary buttons, the selected clip, the focused field, the parked
+  playhead) and red only while playback rolls. Step titles, clip numbers and
+  speaker names are set in Bahnschrift, DisDubs' slate lettering; timecode is
+  monospace. Upstream 1.3.0's structural ideas are in: the steps sit on
+  numbered panels, buttons are flat, fields are recessed with an amber focus
+  ring, scrollbars are slim, and the list has alternating rows.
+- **The timeline reads like a rhythmo band.** Clips are solid strips in their
+  speaker's colour carrying their number and line; the wave lights up in that
+  colour inside each clip; the selected clip gets an amber ring and grab
+  handles. The pan slider now sits under the timeline like a scrollbar.
+- **Less small print.** The three lines of keyboard hints moved behind
+  **Help**, which now opens a keyboard-and-mouse sheet. The note on naming
+  tracks appears only when DisDubs would cast everything as one part. Clip
+  statistics sit in the head of step 2, and the list shows a colour swatch per
+  speaker instead of colouring the whole row.
+- **Zip for DisDubs is the main button** of step 3 (it builds first when
+  needed); *Load and analyse* starts its own row.
+- **Sharp text on scaled displays.** DubForge now tells Windows it handles
+  display scaling itself, so at 125 % or 150 % it is drawn crisply instead of
+  being stretched. A window size saved before this change is converted once.
+  Speaker colours of reopened packs map onto the new palette slot for slot.
+
 ## [1.5.0] - 2026-10-02
 
 ### Added
@@ -533,7 +561,8 @@ switchable at runtime.
   clip lengths it lands one sample short, which previously raised mid-playback
   and froze the interface.
 
-[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.0...v1.4.1

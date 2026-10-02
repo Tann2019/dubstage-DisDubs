@@ -25,6 +25,7 @@ import shutil
 import threading
 import traceback
 import tempfile
+import re
 import subprocess
 
 import atexit
@@ -45,38 +46,125 @@ LOG_PATH = os.path.join(APP_DIR, "dubforge.log")     # letzte Sitzung / last ses
 HELP_URL = "https://github.com/Tann2019/dubstage-DisDubs#readme"
 
 # ---- Farben / colours ------------------------------------------------------
-BG = "#1e1f26"        # Fenster / window
-BG2 = "#272935"       # Felder, Karten / fields, cards
-BG3 = "#15161c"       # Zeitleiste, Log / timeline, log
-FG = "#e7e7ef"
-DIM = "#9aa0b5"
-LINE = "#3a3d4d"
-ACC = "#7c5cff"       # Markenfarbe / brand
-ACC2 = "#43d69a"      # "los" / go
-WARN = "#ffb454"
-WAVE = "#6f7ba8"
-SEL_ROW = "#363a55"   # Zeilenauswahl in der Liste / list selection
-BAN = "#332e5e"       # Update-Banner / update banner
-BAN_TXT = "#241f47"
+# Der Schneideraum von DisDubs: neutrale Graustufen, Hoehe durch hellere
+# Flaeche statt Schatten. Bernstein (Kodak-Randnummer) fuer alles, was man
+# anklicken kann; Rot nur, solange das Band laeuft. Werte wie in
+# DiscordDubs/packages/client/src/styles.css, damit beide zusammengehoeren.
+# DisDubs' cutting room: neutral greys, elevation by lighter surface, amber
+# for anything you can act on, red only while the tape rolls.
+PAGE = "#131417"      # Fenster / window
+PANEL = "#1a1c20"     # Karten je Schritt / step panels
+LIFT = "#212429"      # Knoepfe / buttons
+LIFT_HI = "#2b2f35"   # Knopf unter der Maus / hovered button
+FIELD = "#0f1013"     # vertieft: Felder, Zeitleiste, Liste, Log / recessed
+LANE_ALT = "#131417"  # jede zweite Spur / every other lane
+LINE = "#2f3339"
+LINE_SOFT = "#24272c"
+INK = "#e4e6ea"
+INK_DIM = "#aeb3bb"
+INK_FAINT = "#757b85"
+AMBER = "#f0b45c"     # Handlung, Auswahl, Fokus / action, selection, focus
+AMBER_HI = "#f6c77f"
+AMBER_DEEP = "#a97c2e"
+AMBER_INK = "#1d1607"  # Schrift auf Bernstein / text on amber
+REC = "#e8524a"       # nur: Wiedergabe laeuft / only: playback rolling
+LEADER = "#d8d2c4"    # markierter Abschnitt / marked section
+GOOD = "#6fcf8f"
+WARN = "#dba94f"
+WARN_BG = "#2a2417"
+SEL_ROW = "#2e2a22"   # gewaehlte Listenzeile / selected list row
+WAVE = "#3a3f47"      # Welle ausserhalb der Clips / wave outside clips
+BAN = "#2a2417"       # Update-Banner / update banner
+BAN_TXT = "#1f1b12"
 
-# Spurfarben - jede Spur ist ein Sprecher / track colours - one per speaker
-TRACK_COLORS = ["#7c5cff", "#43d69a", "#ff8a5c", "#5cc8ff",
-                "#ffd166", "#ff6b9d", "#9be36a", "#c58cff"]
+# Altnamen, damit der Rest des Codes unveraendert lesbar bleibt.
+# Legacy names the rest of the code still uses.
+BG, BG2, BG3 = PAGE, PANEL, FIELD
+FG, DIM = INK, INK_DIM
+ACC, ACC2 = AMBER, LEADER
+
+# Spurfarben - jede Spur ist ein Sprecher: Fettstift-Toene, gedaempft, damit
+# sie auf Grau nicht flimmern, und keiner so nah am Bernstein, dass man ihn
+# mit der Auswahl verwechselt.
+# Track colours - one per speaker: muted grease-pencil hues, none close
+# enough to amber to be mistaken for the selection.
+TRACK_COLORS = ["#6fa8dc", "#86c99a", "#e3879a", "#ab93e6",
+                "#5cc6c0", "#e8936b", "#d98ac8", "#9fb3c8"]
+# Farben aelterer Versionen -> gleiche Stelle in der neuen Palette.
+# Older versions' colours -> the same slot in the new palette.
+LEGACY_COLORS = dict(zip(["#7c5cff", "#43d69a", "#ff8a5c", "#5cc8ff",
+                          "#ffd166", "#ff6b9d", "#9be36a", "#c58cff"],
+                         TRACK_COLORS))
 MAX_TRACKS = len(TRACK_COLORS)
 
-# Zeitleisten-Geometrie / timeline geometry (px)
-GUTTER = 128          # linke Spalte mit Spurnamen / left column with track names
-RULER_H = 20
+# Zeitleisten-Geometrie in Pixeln bei 100 %; _apply_scale rechnet sie auf
+# die Bildschirmskalierung um.
+# Timeline geometry in pixels at 100 %; _apply_scale converts them for the
+# display scaling.
+_BASE_GEOM = {"GUTTER": 136, "RULER_H": 22, "WAVE_H": 64, "LANE_H": 36,
+              "ADD_H": 26, "EDGE_PX": 6}
+GUTTER = 136          # linke Spalte mit Spurnamen / left column with track names
+RULER_H = 22
 WAVE_H = 64
-LANE_H = 34
-ADD_H = 24
+LANE_H = 36
+ADD_H = 26
 EDGE_PX = 6           # Griffbreite an Cliprändern / edge grab width
 PLAY_FPS = 10         # Bildrate der bewegten Vorschau / preview frame rate
 PLAY_PAD = 0.5        # Anlauf und Auslauf beim Anhoeren / run-up, run-out
 MIN_SCENE = 1.0       # kuerzer darf eine Szene nicht werden / floor
 
-FONT = "Segoe UI"
-MONO = "Consolas"
+UI_SCALE = 1.0
+
+
+def px(n):
+    """Pixel bei 100 % -> Pixel auf diesem Bildschirm / 100 % px -> real px."""
+    return int(round(n * UI_SCALE))
+
+
+def _apply_scale(scale):
+    global UI_SCALE
+    UI_SCALE = max(1.0, min(3.0, float(scale)))
+    for name, val in _BASE_GEOM.items():
+        globals()[name] = px(val)
+
+
+def _blend(a, b, f):
+    """Farbe a nach b mischen, f = 0..1 / mix colour a toward b."""
+    a, b = a.lstrip("#"), b.lstrip("#")
+    out = []
+    for i in (0, 2, 4):
+        x, y = int(a[i:i + 2], 16), int(b[i:i + 2], 16)
+        out.append(int(round(x + (y - x) * f)))
+    return "#%02x%02x%02x" % tuple(out)
+
+
+# Schriften: Bahnschrift ist die DIN der Klappen und Objektivringe - in
+# DisDubs die Schrift der Klappe. Fehlt sie, bleibt es bei Segoe UI.
+# Fonts: Bahnschrift is the DIN of slates and lens barrels - DisDubs' slate
+# face. Without it everything falls back to Segoe UI.
+if os.name == "nt":
+    FONT, FONT_SB = "Segoe UI", "Segoe UI Semibold"
+    SLATE, SLATE_COND = "Bahnschrift SemiBold", "Bahnschrift SemiBold Condensed"
+    MONO = "Cascadia Mono"
+else:
+    FONT = FONT_SB = SLATE = SLATE_COND = "DejaVu Sans"
+    MONO = "DejaVu Sans Mono"
+
+
+def _settle_fonts(root):
+    """Nicht vorhandene Schriften ersetzen / replace missing families."""
+    global SLATE, SLATE_COND, MONO
+    try:
+        import tkinter.font as tkfont
+        have = set(tkfont.families(root))
+    except Exception:
+        return
+    if SLATE not in have:
+        SLATE = FONT_SB
+    if SLATE_COND not in have:
+        SLATE_COND = SLATE
+    if MONO not in have:
+        MONO = "Consolas" if "Consolas" in have else "Courier New"
 
 
 # ==========================================================================
@@ -102,15 +190,15 @@ T = {
     "lang_label":   ("Sprache:", "Language:"),
 
     # --- Schritt 1
-    "s1":           (" 1. Quelle ", " 1. Source "),
+    "s1":           ("Quelle", "Source"),
     "src_url":      ("YouTube-Link", "YouTube link"),
     "src_file":     ("Datei auf der Platte", "File on disk"),
     "pick_file":    ("Datei waehlen ...", "Choose file ..."),
     "open_pack":    ("Pack weiterbearbeiten ...", "Reopen a pack ..."),
     "from":         ("Von:", "From:"),
     "to":           ("Bis:", "To:"),
-    "time_hint":    ("(z.B. 1:30  oder  0:02:15.5  -  leer = alles)",
-                     "(e.g. 1:30  or  0:02:15.5  -  empty = everything)"),
+    "time_hint":    ("z.B. 1:30 oder 0:02:15.5, leer = alles",
+                     "e.g. 1:30 or 0:02:15.5, empty = everything"),
     "sep_voc":      ("Stimmen von Musik trennen (Demucs)",
                      "Separate vocals from music (Demucs)"),
     "analyze":      ("Laden und analysieren", "Load and analyse"),
@@ -146,7 +234,7 @@ T = {
                      "The first Demucs run takes longer (the model is downloaded)."),
 
     # --- Schritt 2
-    "s2":           (" 2. Clips und Spuren ", " 2. Clips and tracks "),
+    "s2":           ("Clips und Spuren", "Clips and tracks"),
     "canvas_empty": ("Noch nichts geladen  -  oben eine Quelle waehlen und "
                      "'Laden und analysieren' klicken, oder einen Pack "
                      "weiterbearbeiten.",
@@ -156,14 +244,18 @@ T = {
     "zoom_out":     ("Zoom -", "Zoom -"),
     "zoom_all":     ("Alles zeigen", "Fit all"),
     "zoom_sel":     ("Auf Clip zoomen", "Zoom to clip"),
-    "mouse_hint":   ("Ziehen in einer Spur = neuer Clip   |   Clip ziehen = "
-                     "verschieben (auch in andere Spur)   |   Rand = trimmen   |   "
-                     "Strg+Rad = Zoom",
-                     "Drag in a track = new clip   |   drag a clip = move (also "
-                     "across tracks)   |   edge = trim   |   Ctrl+wheel = zoom"),
+    "mouse_hint":   ("In einer Spur ziehen legt einen Clip an. Clips lassen sich "
+                     "verschieben (auch in eine andere Spur), Raender ziehen "
+                     "trimmt, Strg+Rad zoomt.",
+                     "Drag in a track to make a clip. Drag clips to move them "
+                     "(also into another track), drag an edge to trim, "
+                     "Ctrl+wheel to zoom."),
+    "keys_t":       ("Tastatur und Maus", "Keyboard and mouse"),
+    "keys_guide":   ("Anleitung oeffnen", "Open the guide"),
+    "keys_close":   ("Schliessen", "Close"),
     "add_track":    ("+ Spur", "+ Track"),
-    "add_track_row": ("+  Spur hinzufuegen  -  eine je Sprecher",
-                      "+  Add a track  -  one per speaker"),
+    "add_track_row": ("+ Spur hinzufuegen, eine je Sprecher",
+                      "+ Add a track, one per speaker"),
     "track_default": ("Stimme", "Voice"),
     "track_new":    ("Sprecher %d", "Speaker %d"),
     "tracks_hint":  ("Spuren nach dem Sprecher benennen - DisDubs verteilt "
@@ -183,26 +275,40 @@ T = {
     "insp_start":   ("Start:", "Start:"),
     "insp_end":     ("Ende:", "End:"),
     "caption":      ("Untertitel:", "Subtitle:"),
-    "caption_hint": ("Enter = speichern und zum naechsten Clip   ·   "
-                     "Leertaste = anhoeren, solange nichts getippt ist   ·   "
-                     "Esc = zurueck zur Zeitleiste",
-                     "Enter = save and go to the next clip   ·   "
-                     "Space = play as long as nothing is typed   ·   "
-                     "Esc = back to the timeline"),
-    "keys_hint":    ("Leertaste = anhoeren  ·  S = teilen  ·  Strg+D = duplizieren  ·  "
-                     "Entf = loeschen  ·  Pfeile = schieben / Spur wechseln  ·  "
-                     "Strg+Z/Y = rueckgaengig/wiederholen",
-                     "Space = play  ·  S = split  ·  Ctrl+D = duplicate  ·  "
-                     "Del = delete  ·  arrows = nudge / change track  ·  "
-                     "Ctrl+Z/Y = undo/redo"),
+    "caption_hint": ("Enter speichert und springt zum naechsten Clip. Die "
+                     "Leertaste spielt ab, solange nichts getippt ist; Esc "
+                     "fuehrt zurueck zur Zeitleiste.",
+                     "Enter saves and jumps to the next clip. Space plays the "
+                     "clip while nothing is typed; Esc goes back to the "
+                     "timeline."),
+    "keys_hint":    ("Leertaste\tanhoeren / anhalten\n"
+                     "S\tClip teilen\n"
+                     "Strg+D\tClip duplizieren (in die naechste Spur)\n"
+                     "Entf\tClip loeschen\n"
+                     "Pfeile links/rechts\tClip verschieben\n"
+                     "Pfeile hoch/runter\tSpur wechseln\n"
+                     "Strg+Z / Strg+Y\trueckgaengig / wiederholen\n"
+                     "Strg+Mausrad\tzoomen\n"
+                     "Doppelklick\tClip anhoeren\n"
+                     "Rechtsklick\tSpur und Clip bearbeiten; auf der Welle: Szene kuerzen",
+                     "Space\tplay / stop\n"
+                     "S\tsplit the clip\n"
+                     "Ctrl+D\tduplicate the clip (into the next track)\n"
+                     "Del\tdelete the clip\n"
+                     "Left / right\tnudge the clip\n"
+                     "Up / down\tmove it to another track\n"
+                     "Ctrl+Z / Ctrl+Y\tundo / redo\n"
+                     "Ctrl+wheel\tzoom\n"
+                     "Double-click\tplay the clip\n"
+                     "Right-click\ttrack and clip options; on the wave: trim the scene"),
     "help":         ("Hilfe", "Help"),
     "cancel":       ("Abbrechen", "Cancel"),
     "st_cancelled": ("Abgebrochen.", "Cancelled."),
     "dlg_abort_t":  ("Es laeuft noch etwas", "Something is still running"),
     "dlg_abort":    ("Ein Vorgang laeuft noch (%s).\n\nAbbrechen und schliessen?",
                      "A job is still running (%s).\n\nAbort it and close?"),
-    "warn_tools":   ("Fehlt: %s  -  bitte Setup.bat ausfuehren.",
-                     "Missing: %s  -  please run Setup.bat."),
+    "warn_tools":   ("Fehlt: %s. Setup.bat ausfuehren, dann DubForge neu starten.",
+                     "Missing: %s. Run Setup.bat, then restart DubForge."),
     "warn_demucs":  ("(nicht installiert - Setup.bat)", "(not installed - Setup.bat)"),
     "ff_ready":     ("ffmpeg bereit (H.264: %s, AAC: %s)",
                      "ffmpeg ready (H.264: %s, AAC: %s)"),
@@ -392,13 +498,13 @@ T = {
                       "Delete track '%s' and its %d clips?"),
     "dlg_track_max": ("Mehr als %d Spuren gibt es nicht.",
                       "There is a limit of %d tracks."),
-    "stats":        ("%d Clips  ·  %d Spuren  ·  %d ohne Untertitel  ·  %s gesprochen",
-                     "%d clips  ·  %d tracks  ·  %d without subtitle  ·  %s spoken"),
+    "stats":        ("%d Clips, %d Spuren, %d ohne Untertitel, %s gesprochen",
+                     "%d clips, %d tracks, %d without subtitle, %s spoken"),
     "overlap_note": ("%d Ueberschneidungen in derselben Spur",
                      "%d overlaps within the same track"),
 
     # --- Schritt 3
-    "s3":           (" 3. Pack bauen ", " 3. Build the pack "),
+    "s3":           ("Pack bauen", "Build the pack"),
     "pack_name":    ("Pack-Name:", "Pack name:"),
     "author":       ("Autor:", "Author:"),
     "is_dub":       ("Mit Video (fuer DubStage / DisDubs)",
@@ -602,15 +708,24 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         appwin.set_icon(self, "DubForge")
+        # Mit DPI-Bewusstsein (siehe _main) zeichnet Tk in echten Pixeln:
+        # Schriften wachsen von selbst mit, Pixelmasse rechnet px() um.
+        # When DPI aware (see _main) Tk draws in real pixels: fonts follow on
+        # their own, pixel sizes go through px().
+        try:
+            _apply_scale(self.winfo_fpixels("1i") / 96.0)
+        except Exception:
+            _apply_scale(1.0)
+        _settle_fonts(self)
         self.cfg = load_cfg()
         set_lang(self.cfg.get("lang") or pc.system_lang())
 
         # Fensterhoehe an den Bildschirm anpassen; darunter scrollt die Seite.
         # Fit the window to the screen; below that the page scrolls.
         sh = self.winfo_screenheight()
-        self.geometry(self.cfg.get("geometry",
-                                   "1260x%d" % min(920, max(560, sh - 130))))
-        self.minsize(1040, 520)
+        self.geometry(self._saved_geometry() or
+                      "%dx%d" % (px(1320), min(px(960), max(px(560), sh - px(130)))))
+        self.minsize(px(1040), px(520))
         self.configure(bg=BG)
 
         self.msgq = queue.Queue()
@@ -700,6 +815,22 @@ class App(tk.Tk):
         self.after(50, self._check_tools_async)
         self._upd_id = self.after(1200, self._check_update)
 
+    def _saved_geometry(self):
+        """Gespeicherte Fenstergroesse, umgerechnet, falls sie unter einer
+        anderen Skalierung gespeichert wurde (z.B. vor der DPI-Umstellung).
+        The saved window size, converted if it was stored at another scale."""
+        geo = self.cfg.get("geometry")
+        if not geo:
+            return None
+        m = re.match(r"^(\d+)x(\d+)([+-]-?\d+[+-]-?\d+)?$", str(geo))
+        if not m:
+            return None
+        f = UI_SCALE / float(self.cfg.get("ui_scale") or 1.0)
+        if abs(f - 1.0) < 0.01:
+            return geo
+        return "%dx%d%s" % (int(int(m.group(1)) * f), int(int(m.group(2)) * f),
+                            m.group(3) or "")
+
     # -------------------------------------------------- Variablen (einmalig)
     def _init_vars(self):
         c = self.cfg
@@ -755,143 +886,336 @@ class App(tk.Tk):
             except Exception:
                 pass
 
-        cfg(".", background=BG, foreground=FG, fieldbackground=BG2,
-            bordercolor=LINE, lightcolor=BG2, darkcolor=BG2,
+        def lay(style, spec):
+            try:
+                s.layout(style, spec)
+            except Exception:
+                pass
+
+        # Aufbau: Seite (PAGE), darauf je Schritt eine Tafel (PANEL). Die
+        # Grundfarbe aller Widgets ist die Tafel - was direkt auf der Seite
+        # liegt, nimmt die Page-Stile.
+        # Layout: the page, one panel per step on it. Every widget defaults to
+        # the panel colour; whatever sits on the page itself uses Page styles.
+        cfg(".", background=PANEL, foreground=INK, fieldbackground=FIELD,
+            bordercolor=LINE, lightcolor=PANEL, darkcolor=PANEL,
+            troughcolor=FIELD, selectbackground=AMBER,
+            selectforeground=AMBER_INK, insertcolor=INK, focuscolor=AMBER,
             font=(FONT, 10))
-        cfg("TFrame", background=BG)
-        cfg("Card.TFrame", background=BG2)
-        cfg("TLabel", background=BG, foreground=FG)
-        cfg("Card.TLabel", background=BG2, foreground=FG)
-        cfg("Head.TLabel", background=BG, foreground=ACC2,
-            font=(FONT + " Semibold", 13))
-        cfg("Tag.TLabel", background=BG, foreground=DIM,
-            font=(FONT, 10))
-        cfg("Dim.TLabel", background=BG, foreground=DIM)
-        cfg("Insp.TLabel", background=BG, foreground=FG,
-            font=(FONT + " Semibold", 10))
-        cfg("Warn.TLabel", background="#3a2f1e", foreground=WARN,
-            padding=(10, 5), font=(FONT + " Semibold", 10))
-        cfg("TButton", background="#3a3d4d", foreground=FG, padding=6,
-            borderwidth=0, focuscolor=BG)
-        mp("TButton", background=[("active", "#4a4e63"),
-                                  ("disabled", "#2c2e3a")],
-           foreground=[("disabled", "#6c718a")])
-        cfg("Small.TButton", padding=(6, 3))
-        cfg("Accent.TButton", background=ACC, foreground="#ffffff",
-            padding=8, font=(FONT + " Semibold", 10))
-        mp("Accent.TButton", background=[("active", "#9078ff"),
-                                         ("disabled", "#463a7a")])
-        cfg("Go.TButton", background=ACC2, foreground="#0d2b20",
-            padding=8, font=(FONT + " Semibold", 10))
-        mp("Go.TButton", background=[("active", "#5ee7ae"),
-                                     ("disabled", "#2b5c48")])
-        cfg("TMenubutton", background="#3a3d4d", foreground=FG,
-            padding=6, borderwidth=0, arrowcolor=FG)
-        mp("TMenubutton", background=[("active", "#4a4e63")])
-        cfg("TEntry", fieldbackground=BG2, foreground=FG,
-            insertcolor=FG, padding=4)
+        cfg("TFrame", background=PANEL)
+        cfg("Page.TFrame", background=PAGE)
+        cfg("Card.TFrame", background=PANEL)
+        cfg("TLabel", background=PANEL, foreground=INK)
+        cfg("Card.TLabel", background=PANEL, foreground=INK)
+        cfg("Dim.TLabel", background=PANEL, foreground=INK_FAINT, font=(FONT, 9))
+        cfg("Field.TLabel", background=PANEL, foreground=INK_DIM)
+        cfg("Step.TLabel", background=PANEL, foreground=INK, font=(SLATE, 13))
+        cfg("Stats.TLabel", background=PANEL, foreground=INK_DIM, font=(FONT, 9))
+        cfg("Cast.TLabel", background=PANEL, foreground=WARN, font=(FONT, 9))
+        cfg("Insp.TLabel", background=PANEL, foreground=INK, font=(SLATE, 12))
+        cfg("Page.TLabel", background=PAGE, foreground=INK)
+        cfg("PageDim.TLabel", background=PAGE, foreground=INK_FAINT)
+        cfg("App.TLabel", background=PAGE, foreground=INK, font=(SLATE, 19))
+        cfg("Head.TLabel", background=PAGE, foreground=INK, font=(SLATE, 19))
+        cfg("Tag.TLabel", background=PAGE, foreground=INK_FAINT, font=(FONT, 10))
+        cfg("Status.TLabel", background=PANEL, foreground=INK_DIM, font=(FONT, 9))
+        cfg("Built.TLabel", background=PANEL, foreground=GOOD, font=(FONT, 9))
+        cfg("Warn.TLabel", background=WARN_BG, foreground=WARN,
+            padding=(px(12), px(7)), font=(FONT_SB, 10))
+
+        # Knoepfe: flach, Hoehe durch hellere Flaeche. Bernstein nur fuer die
+        # eine Hauptsache je Schritt.
+        # Buttons: flat, raised by a lighter surface. Amber only for the one
+        # main thing per step.
+        # width=-4: hoechstens 4 Zeichen Mindestbreite statt 11 - sonst
+        # blaeht ttk kurze Knoepfe wie "Split" auf. / minimum 4 chars, not 11
+        cfg("TButton", background=LIFT, foreground=INK, width=-4,
+            padding=(px(12), px(6)), borderwidth=0, relief="flat",
+            focusthickness=1, focuscolor=AMBER_DEEP, font=(FONT, 10))
+        mp("TButton",
+           background=[("disabled", PANEL), ("pressed", LINE),
+                       ("active", LIFT_HI)],
+           foreground=[("disabled", INK_FAINT)],
+           focuscolor=[("disabled", PANEL)])
+        cfg("Small.TButton", padding=(px(9), px(4)))
+        for name in ("Accent", "Go"):
+            cfg(name + ".TButton", background=AMBER, foreground=AMBER_INK,
+                padding=(px(16), px(7)), font=(FONT_SB, 10),
+                focuscolor=AMBER_INK)
+            mp(name + ".TButton",
+               background=[("disabled", LIFT), ("pressed", AMBER_DEEP),
+                           ("active", AMBER_HI)],
+               foreground=[("disabled", INK_FAINT)])
+        cfg("Ghost.TButton", background=PANEL, foreground=INK_DIM,
+            padding=(px(9), px(5)), focuscolor=AMBER_DEEP)
+        mp("Ghost.TButton",
+           background=[("disabled", PANEL), ("pressed", LIFT),
+                       ("active", LIFT)],
+           foreground=[("disabled", INK_FAINT), ("active", INK)])
+        cfg("PageGhost.TButton", background=PAGE, foreground=INK_DIM,
+            padding=(px(10), px(5)), focuscolor=AMBER_DEEP)
+        mp("PageGhost.TButton",
+           background=[("pressed", LIFT), ("active", PANEL)],
+           foreground=[("active", INK)])
+        cfg("Tool.TButton", background=LIFT, foreground=INK,
+            padding=(px(9), px(3)), font=(FONT, 12))
+        mp("Tool.TButton",
+           background=[("disabled", "#1d1f23"), ("pressed", LINE),
+                       ("active", LIFT_HI)],
+           foreground=[("disabled", "#5a5f67")])
+        # Ohne das grosse Dreieck von clam; der Pfeil steht im Text (▾).
+        # Without clam's big triangle; the arrow is part of the text.
+        lay("TMenubutton",
+            [("Menubutton.border", {"sticky": "nswe", "children": [
+                ("Menubutton.padding", {"sticky": "nswe", "children": [
+                    ("Menubutton.label", {"sticky": "nswe"})]})]})])
+        cfg("TMenubutton", background=LIFT, foreground=INK,
+            padding=(px(11), px(6)), borderwidth=0, relief="flat")
+        mp("TMenubutton",
+           background=[("disabled", PANEL), ("pressed", LINE),
+                       ("active", LIFT_HI)],
+           foreground=[("disabled", INK_FAINT)])
+
+        # Eingabefelder liegen tiefer als die Tafel; der Rahmen leuchtet im
+        # Fokus bernsteinfarben - so sieht man, wo die Tastatur gerade ist.
+        # Fields sit below the panel; the frame turns amber with focus so it
+        # is plain where the keyboard is.
+        field = dict(fieldbackground=FIELD, foreground=INK, insertcolor=INK,
+                     bordercolor=LINE, lightcolor=FIELD, darkcolor=FIELD,
+                     padding=(px(7), px(5)))
+        cfg("TEntry", **field)
         # "readonly" und "disabled" haben eigene Farben, die configure()
         # nicht erreicht - sonst wird das Feld hell und der Text unsichtbar.
         # "readonly" and "disabled" carry their own colours configure() never
         # reaches - the field would turn light and swallow its own text.
         mp("TEntry",
-           fieldbackground=[("readonly", BG2), ("disabled", BG)],
-           foreground=[("readonly", DIM), ("disabled", "#7a7f96")],
-           bordercolor=[("focus", ACC)])
+           fieldbackground=[("readonly", PANEL), ("disabled", PANEL)],
+           foreground=[("readonly", INK_DIM), ("disabled", INK_FAINT)],
+           bordercolor=[("focus", AMBER), ("hover", "#40454d")],
+           lightcolor=[("focus", AMBER_DEEP)], darkcolor=[("focus", AMBER_DEEP)])
         # Comboboxen: der Zustand "readonly" hat eigene Farben, die
         # configure() nicht erreicht - deshalb zusaetzlich map().
         # Comboboxes: the "readonly" state has its own colours that
         # configure() never reaches - hence the extra map().
-        cfg("TCombobox", fieldbackground=BG2, background=BG2,
-            foreground=FG, arrowcolor=FG, bordercolor=LINE,
-            lightcolor=BG2, darkcolor=BG2, padding=4,
-            selectbackground=BG2, selectforeground=FG)
+        cfg("TCombobox", background=FIELD, arrowcolor=INK_DIM,
+            arrowsize=px(11), selectbackground=FIELD, selectforeground=INK,
+            **field)
         mp("TCombobox",
-           fieldbackground=[("readonly", BG2), ("disabled", BG)],
-           background=[("readonly", BG2), ("active", BG2)],
-           foreground=[("readonly", FG), ("disabled", "#7a7f96")],
-           selectbackground=[("readonly", BG2), ("focus", BG2)],
-           selectforeground=[("readonly", FG), ("focus", FG)],
-           arrowcolor=[("readonly", FG), ("disabled", "#7a7f96")])
-        self.option_add("*TCombobox*Listbox.background", BG2)
-        self.option_add("*TCombobox*Listbox.foreground", FG)
-        self.option_add("*TCombobox*Listbox.selectBackground", ACC)
-        self.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
+           fieldbackground=[("readonly", FIELD), ("disabled", PANEL)],
+           background=[("readonly", FIELD), ("active", FIELD)],
+           foreground=[("readonly", INK), ("disabled", INK_FAINT)],
+           selectbackground=[("readonly", FIELD), ("focus", FIELD)],
+           selectforeground=[("readonly", INK), ("focus", INK)],
+           bordercolor=[("focus", AMBER), ("hover", "#40454d")],
+           arrowcolor=[("active", AMBER), ("disabled", LINE)])
+        self.option_add("*TCombobox*Listbox.background", LIFT)
+        self.option_add("*TCombobox*Listbox.foreground", INK)
+        self.option_add("*TCombobox*Listbox.selectBackground", AMBER)
+        self.option_add("*TCombobox*Listbox.selectForeground", AMBER_INK)
         self.option_add("*TCombobox*Listbox.borderWidth", 0)
+        self.option_add("*TCombobox*Listbox.font", (FONT, 10))
+        cfg("TSpinbox", background=FIELD, arrowcolor=INK_DIM,
+            arrowsize=px(9), **field)
+        mp("TSpinbox",
+           fieldbackground=[("readonly", FIELD), ("disabled", PANEL)],
+           background=[("active", FIELD), ("readonly", FIELD)],
+           foreground=[("disabled", INK_FAINT)],
+           bordercolor=[("focus", AMBER)],
+           arrowcolor=[("active", AMBER), ("disabled", LINE)])
+
         # Kaestchen und Punkte: clam faerbt sie beim Ueberfahren hell ein,
         # dann steht dunkler Text auf weissem Grund. Alle Zustaende setzen.
         # Check boxes and radio dots: clam lightens them on hover, leaving
         # dark text on white. Spell out every state.
         for kind in ("TCheckbutton", "TRadiobutton"):
-            cfg(kind, background=BG, foreground=FG,
-                indicatorbackground=BG2, indicatorforeground=FG,
-                focuscolor=BG, padding=2)
+            cfg(kind, background=PANEL, foreground=INK, indicatorsize=px(13),
+                indicatorbackground=FIELD, indicatorforeground=AMBER_INK,
+                indicatormargin=(0, 0, px(7), 0), upperbordercolor="#454a52",
+                lowerbordercolor="#454a52", focuscolor=PANEL,
+                padding=(px(2), px(3)))
             mp(kind,
-               background=[("active", BG), ("pressed", BG)],
-               foreground=[("disabled", "#7a7f96"), ("active", FG)],
-               indicatorbackground=[("selected", ACC), ("pressed", ACC),
-                                    ("active", "#3a3d4d"),
-                                    ("disabled", BG2)],
-               indicatorforeground=[("selected", "#ffffff"),
-                                    ("disabled", "#7a7f96")])
-        cfg("Treeview", background=BG2, fieldbackground=BG2,
-            foreground=FG, rowheight=24, borderwidth=0)
-        cfg("Treeview.Heading", background="#343747", foreground=FG,
-            relief="flat", font=(FONT + " Semibold", 9))
+               background=[("active", PANEL), ("pressed", PANEL)],
+               foreground=[("disabled", INK_FAINT), ("active", INK)],
+               indicatorbackground=[("selected", AMBER), ("pressed", AMBER),
+                                    ("active", LIFT_HI), ("disabled", PANEL)],
+               indicatorforeground=[("selected", AMBER_INK),
+                                    ("disabled", INK_FAINT)],
+               upperbordercolor=[("selected", AMBER), ("active", INK_FAINT)],
+               lowerbordercolor=[("selected", AMBER), ("active", INK_FAINT)])
+
+        # Umschalter fuer die Quelle: zwei Kacheln statt zweier Punkte.
+        # Source switch: two tiles instead of two radio dots.
+        lay("Seg.TRadiobutton",
+            [("Radiobutton.padding", {"sticky": "nswe", "children": [
+                ("Radiobutton.label", {"sticky": "nswe"})]})])
+        cfg("Seg.TRadiobutton", background=FIELD, foreground=INK_FAINT,
+            padding=(px(12), px(5)), anchor="center", font=(FONT, 10))
+        mp("Seg.TRadiobutton",
+           background=[("selected", LIFT_HI), ("active", LIFT)],
+           foreground=[("selected", INK), ("active", INK_DIM),
+                       ("disabled", LINE)])
+
+        # Liste: vertieft, ruhige Zeilen im Wechsel, Kopf ohne Kanten.
+        # List: recessed, quiet alternating rows, a heading without edges.
+        cfg("Treeview", background=FIELD, fieldbackground=FIELD,
+            foreground=INK, rowheight=px(27), borderwidth=0, relief="flat",
+            font=(FONT, 10))
+        lay("Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
+        cfg("Treeview.Heading", background=PANEL, foreground=INK_FAINT,
+            relief="flat", borderwidth=0, padding=(px(6), px(5)),
+            font=(FONT_SB, 9))
         # Spaltenkopf wird beim Ueberfahren sonst weiss.
         # Otherwise the column heading turns white on hover.
         mp("Treeview.Heading",
-           background=[("active", "#404560"), ("pressed", "#4a5070")],
-           foreground=[("active", FG), ("pressed", FG)],
+           background=[("active", PANEL), ("pressed", PANEL)],
+           foreground=[("active", INK_DIM), ("pressed", INK_DIM)],
            relief=[("active", "flat"), ("pressed", "flat")])
-        # Neutrale Auswahlfarbe, damit die Sprecherfarben lesbar bleiben.
-        # Neutral selection so the per-speaker text colours stay readable.
         mp("Treeview", background=[("selected", SEL_ROW)],
-           foreground=[("selected", FG)])
-        cfg("TProgressbar", background=ACC2, troughcolor=BG2,
-            borderwidth=0)
-        cfg("Ban.TFrame", background=BAN)
-        cfg("Ban.TLabel", background=BAN, foreground=FG)
-        cfg("BanHead.TLabel", background=BAN, foreground="#ffffff",
-            font=(FONT + " Semibold", 11))
-        cfg("BanDim.TLabel", background=BAN, foreground="#b6b1dc")
-        cfg("Ban.TButton", background="#4b4590", foreground=FG,
-            padding=6, borderwidth=0)
-        mp("Ban.TButton", background=[("active", "#5d56ad")])
-        cfg("Vertical.TScrollbar", background="#3a3d4d",
-            troughcolor=BG2, bordercolor=BG2, arrowcolor=FG,
-            darkcolor=BG2, lightcolor=BG2, borderwidth=0)
-        mp("Vertical.TScrollbar", background=[("active", "#4a4e63")])
-        cfg("Horizontal.TScrollbar", background="#3a3d4d",
-            troughcolor=BG2, bordercolor=BG2, arrowcolor=FG,
-            darkcolor=BG2, lightcolor=BG2, borderwidth=0)
-        mp("Horizontal.TScrollbar", background=[("active", "#4a4e63")])
-        cfg("TLabelframe", background=BG, foreground=ACC2)
-        cfg("TLabelframe.Label", background=BG, foreground=ACC2,
-            font=(FONT + " Semibold", 10))
-        # Schieberegler: der Griff kommt aus "background", der beim
-        # Ueberfahren ebenfalls hell werden wuerde.
-        # The slider handle is drawn from "background", which would go
-        # light on hover as well.
-        cfg("TScale", background="#4a4e63", troughcolor=BG2,
-            bordercolor=LINE, lightcolor="#4a4e63", darkcolor="#4a4e63")
-        mp("TScale",
-           background=[("active", ACC), ("pressed", ACC)],
-           lightcolor=[("active", ACC)], darkcolor=[("active", ACC)])
-        cfg("TSpinbox", fieldbackground=BG2, background=BG2,
-            foreground=FG, arrowcolor=FG, bordercolor=LINE,
-            lightcolor=BG2, darkcolor=BG2, insertcolor=FG, padding=3)
-        mp("TSpinbox",
-           fieldbackground=[("readonly", BG2), ("disabled", BG)],
-           background=[("active", BG2), ("readonly", BG2)],
-           foreground=[("disabled", "#7a7f96")],
-           arrowcolor=[("active", ACC2), ("disabled", "#7a7f96")])
+           foreground=[("selected", INK)])
+
+        cfg("TProgressbar", background=AMBER, troughcolor=FIELD,
+            bordercolor=FIELD, lightcolor=AMBER, darkcolor=AMBER,
+            borderwidth=0, thickness=px(5))
         cfg("TSeparator", background=LINE)
-        cfg("TPanedwindow", background=BG)
+        cfg("TPanedwindow", background=PAGE)
+
+        # Schmale Scrollbalken ohne Pfeile.
+        # Slim scrollbars without arrows.
+        for orient, side in (("Vertical", "ns"), ("Horizontal", "we")):
+            lay(orient + ".TScrollbar",
+                [(orient + ".Scrollbar.trough", {"sticky": side, "children": [
+                    (orient + ".Scrollbar.thumb",
+                     {"expand": "1", "sticky": "nswe"})]})])
+            cfg(orient + ".TScrollbar", background="#33373e",
+                troughcolor=PANEL, bordercolor=PANEL, lightcolor="#33373e",
+                darkcolor="#33373e", arrowsize=px(9), gripcount=0,
+                borderwidth=0)
+            mp(orient + ".TScrollbar",
+               background=[("pressed", AMBER_DEEP), ("active", "#454a52")],
+               lightcolor=[("pressed", AMBER_DEEP), ("active", "#454a52")],
+               darkcolor=[("pressed", AMBER_DEEP), ("active", "#454a52")])
+        cfg("Page.Vertical.TScrollbar", troughcolor=PAGE, bordercolor=PAGE)
+
+        # Schieberegler: schmale Spur, Griff hebt sich unter der Maus.
+        # The slider handle is drawn from "background", which would go light
+        # on hover as well - every state is set.
+        cfg("TScale", background="#3a3f47", troughcolor=FIELD,
+            bordercolor=FIELD, lightcolor="#3a3f47", darkcolor="#3a3f47",
+            gripcount=0, sliderlength=px(40), sliderthickness=px(10),
+            troughrelief="flat", borderwidth=0)
+        mp("TScale",
+           background=[("disabled", LINE), ("pressed", AMBER),
+                       ("active", "#4a5058")],
+           lightcolor=[("pressed", AMBER), ("active", "#4a5058")],
+           darkcolor=[("pressed", AMBER), ("active", "#4a5058")])
+
+        cfg("Ban.TFrame", background=BAN)
+        cfg("Ban.TLabel", background=BAN, foreground=INK)
+        cfg("BanHead.TLabel", background=BAN, foreground=AMBER,
+            font=(SLATE, 12))
+        cfg("BanDim.TLabel", background=BAN, foreground=INK_DIM)
+        cfg("Ban.TButton", background="#3a3222", foreground=INK,
+            padding=(px(10), px(5)), borderwidth=0, focuscolor=AMBER_DEEP)
+        mp("Ban.TButton", background=[("active", "#4a402b")])
 
     def _menu(self, parent):
-        return tk.Menu(parent, tearoff=0, bg=BG2, fg=FG, activebackground=ACC,
-                       activeforeground="#ffffff", relief="flat", bd=0)
+        return tk.Menu(parent, tearoff=0, bg=LIFT, fg=INK,
+                       activebackground=AMBER, activeforeground=AMBER_INK,
+                       selectcolor=AMBER, disabledforeground=INK_FAINT,
+                       relief="flat", bd=0, font=(FONT, 10))
+
+    # --------------------------------------------------------- Bausteine
+    def _card(self, parent, number, title, expand=False):
+        """Tafel mit nummeriertem Kopf. Gibt (Inhalt, Kopfzeile) zurueck.
+        A panel with a numbered head. Returns (body, head)."""
+        card = ttk.Frame(parent, style="Card.TFrame",
+                         padding=(px(16), px(12), px(16), px(14)))
+        card.pack(fill="both" if expand else "x", expand=expand,
+                  pady=(0, px(10)))
+        head = ttk.Frame(card)
+        head.pack(fill="x", pady=(0, px(10)))
+        if number:
+            # Eckig wie Klappe und Filmbild / square like slates and frames
+            n = px(24)
+            badge = tk.Canvas(head, width=n, height=n, bg=PANEL,
+                              highlightthickness=0, takefocus=0)
+            badge.create_rectangle(1, 1, n - 1, n - 1, outline=AMBER_DEEP)
+            badge.create_text(n / 2, n / 2 + 1, text=str(number), fill=AMBER,
+                              font=(SLATE, 11))
+            badge.pack(side="left", padx=(0, px(10)))
+        ttk.Label(head, text=title, style="Step.TLabel").pack(side="left")
+        body = ttk.Frame(card)
+        body.pack(fill="both", expand=True)
+        return body, head
+
+    def _mark(self, parent):
+        """Die Klappe aus dem DisDubs-Logo, klein: das Werkzeug gehoert dazu.
+        The clapperboard from DisDubs' cover, small: this tool belongs to it."""
+        w, h = px(30), px(26)
+        cv = tk.Canvas(parent, width=w, height=h, bg=PAGE,
+                       highlightthickness=0, takefocus=0)
+        stick = px(8)
+        cv.create_rectangle(0, stick + px(2), w, h, fill=LIFT, outline=LINE)
+        cv.create_rectangle(0, 0, w, stick, fill=LIFT, outline="")
+        k = px(6)
+        x = -px(2)
+        while x < w:
+            cv.create_polygon(x + px(3), 0, x + px(3) + k * 0.6, 0,
+                              x + k * 0.6, stick, x, stick,
+                              fill=LEADER, outline="")
+            x += k
+        cv.create_line(px(5), stick + px(10), w - px(5), stick + px(10),
+                       fill=AMBER, width=max(1, px(2)))
+        return cv
+
+    def _show_keys(self):
+        """Tastatur und Maus auf einen Blick, statt drei Zeilen Kleingedrucktes.
+        Keyboard and mouse at a glance instead of three lines of small print."""
+        old = getattr(self, "_keys_win", None)
+        if old is not None and old.winfo_exists():
+            old.lift()
+            return
+        win = tk.Toplevel(self)
+        self._keys_win = win
+        win.title(t("keys_t"))
+        win.configure(bg=PANEL)
+        win.transient(self)
+        win.resizable(False, False)
+        body = ttk.Frame(win, padding=(px(18), px(14), px(18), px(14)))
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text=t("keys_t"), style="Step.TLabel").pack(anchor="w")
+        grid = ttk.Frame(body)
+        grid.pack(fill="x", pady=(px(10), 0))
+        for r, line in enumerate(t("keys_hint").split("\n")):
+            key, _tab, what = line.partition("\t")
+            ttk.Label(grid, text=key, style="Field.TLabel",
+                      font=(FONT_SB, 10)).grid(row=r, column=0, sticky="w",
+                                                padx=(0, px(18)), pady=px(2))
+            ttk.Label(grid, text=what).grid(row=r, column=1, sticky="w",
+                                            pady=px(2))
+        for key in ("mouse_hint", "caption_hint", "tracks_hint"):
+            ttk.Label(body, text=t(key), style="Dim.TLabel",
+                      wraplength=px(440), justify="left").pack(
+                anchor="w", pady=(px(10), 0))
+        act = ttk.Frame(body)
+        act.pack(fill="x", pady=(px(14), 0))
+        ttk.Button(act, text=t("keys_close"), style="Accent.TButton",
+                   command=win.destroy).pack(side="right")
+        ttk.Button(act, text=t("keys_guide"), style="Ghost.TButton",
+                   command=lambda: webbrowser.open(HELP_URL)).pack(side="right",
+                                                                  padx=(0, px(8)))
+        win.bind("<Escape>", lambda e: win.destroy())
+        win.focus_set()
+
+    def _swatch(self, col):
+        """Kleines Farbquadrat je Sprecher fuer die Liste / speaker swatch."""
+        cache = self.__dict__.setdefault("_swatches", {})
+        if col not in cache:
+            n = px(10)
+            img = tk.PhotoImage(width=n + px(6), height=n)
+            img.put(col, to=(0, 0, n, n))
+            cache[col] = img
+        return cache[col]
 
     def _build_ui(self):
         self.title(t("title"))
@@ -900,7 +1224,7 @@ class App(tk.Tk):
         # ins Fenster, scrollt die Seite statt unten abgeschnitten zu werden.
         # The content sits in a scrolling canvas: too small a window scrolls
         # instead of cutting off the bottom.
-        outer = ttk.Frame(self)
+        outer = ttk.Frame(self, style="Page.TFrame")
         outer.pack(fill="both", expand=True)
         self.ui_root = outer
 
@@ -909,17 +1233,19 @@ class App(tk.Tk):
         self.upd_text = None
         self.upd_status = None
 
-        host = ttk.Frame(outer)
+        host = ttk.Frame(outer, style="Page.TFrame")
         host.pack(fill="both", expand=True)
         self.scroll_host = host
-        self.vcanvas = tk.Canvas(host, bg=BG, highlightthickness=0, takefocus=0,
-                                 yscrollincrement=20)
+        self.vcanvas = tk.Canvas(host, bg=PAGE, highlightthickness=0, takefocus=0,
+                                 yscrollincrement=px(20))
         self.vcanvas.pack(side="left", fill="both", expand=True)
-        vbar = ttk.Scrollbar(host, orient="vertical", command=self.vcanvas.yview)
-        vbar.pack(side="right", fill="y")
+        vbar = ttk.Scrollbar(host, orient="vertical", command=self.vcanvas.yview,
+                             style="Page.Vertical.TScrollbar")
+        vbar.pack(side="right", fill="y", padx=(0, px(2)), pady=px(2))
         self.vcanvas.configure(yscrollcommand=vbar.set)
 
-        root = ttk.Frame(self.vcanvas, padding=(10, 8, 10, 8))
+        root = ttk.Frame(self.vcanvas, style="Page.TFrame",
+                         padding=(px(16), px(12), px(16), px(12)))
         self._root_win = self.vcanvas.create_window((0, 0), window=root,
                                                     anchor="nw")
         self.root_frame = root
@@ -927,90 +1253,93 @@ class App(tk.Tk):
         self.vcanvas.bind("<Configure>", self._scroll_geom)
 
         # ---------------- Kopfzeile / header
-        top = ttk.Frame(root)
-        top.pack(fill="x")
+        top = ttk.Frame(root, style="Page.TFrame")
+        top.pack(fill="x", pady=(0, px(12)))
+        self._mark(top).pack(side="left", padx=(0, px(10)))
         ttk.Label(top, text="DubForge", style="Head.TLabel").pack(side="left")
-        ttk.Label(top, text="   " + t("tagline"),
-                  style="Tag.TLabel").pack(side="left", pady=(3, 0))
-        self.lang_box = ttk.Combobox(top, textvariable=self.lang_var, width=10,
+        ttk.Label(top, text=t("tagline"), style="Tag.TLabel").pack(
+            side="left", padx=(px(12), 0), pady=(px(5), 0))
+        self.lang_box = ttk.Combobox(top, textvariable=self.lang_var, width=9,
                                      state="readonly",
                                      values=("Deutsch", "English"))
         self.lang_box.pack(side="right")
         self.lang_box.bind("<<ComboboxSelected>>", self._change_lang)
         ttk.Label(top, text=t("lang_label"),
-                  style="Dim.TLabel").pack(side="right", padx=(0, 6))
-        ttk.Button(top, text=t("help"), style="Small.TButton",
-                   command=lambda: webbrowser.open(HELP_URL)).pack(side="right",
-                                                                   padx=(0, 12))
+                  style="PageDim.TLabel").pack(side="right", padx=(0, px(8)))
+        ttk.Button(top, text=t("help"), style="PageGhost.TButton",
+                   command=self._show_keys).pack(side="right", padx=(0, px(16)))
         # Warnzeile fuer fehlende Werkzeuge / warning row for missing tools
         self.warn_lbl = ttk.Label(root, text="", style="Warn.TLabel")
-        self._apply_tool_state()
 
         # ---------------- Schritt 1: Quelle / source
-        step1 = ttk.LabelFrame(root, text=t("s1"), padding=(10, 6, 10, 8))
-        step1.pack(fill="x", pady=(6, 0))
+        step1, _h1 = self._card(root, 1, t("s1"))
 
         r1 = ttk.Frame(step1)
         r1.pack(fill="x")
-        ttk.Radiobutton(r1, text=t("src_url"), value="url",
-                        variable=self.src_mode,
-                        command=self._sync_src).pack(side="left", padx=(0, 12))
-        ttk.Radiobutton(r1, text=t("src_file"), value="file",
-                        variable=self.src_mode,
-                        command=self._sync_src).pack(side="left", padx=(0, 12))
+        seg = ttk.Frame(r1, style="Page.TFrame", padding=px(2))
+        seg.pack(side="left", padx=(0, px(10)))
+        for val, key in (("url", "src_url"), ("file", "src_file")):
+            ttk.Radiobutton(seg, text=t(key), value=val, variable=self.src_mode,
+                            style="Seg.TRadiobutton",
+                            command=self._sync_src).pack(side="left")
         self.url_entry = ttk.Entry(r1, textvariable=self.url_var)
         self.url_entry.pack(side="left", fill="x", expand=True)
         self.file_btn = ttk.Button(r1, text=t("pick_file"), command=self._pick_file)
-        self.file_btn.pack(side="left", padx=(8, 0))
+        self.file_btn.pack(side="left", padx=(px(8), 0))
         ttk.Button(r1, text=t("open_pack"),
-                   command=self.open_pack).pack(side="left", padx=(8, 0))
+                   command=self.open_pack).pack(side="left", padx=(px(8), 0))
 
         r2 = ttk.Frame(step1)
-        r2.pack(fill="x", pady=(8, 0))
-        ttk.Label(r2, text=t("from")).pack(side="left")
-        ttk.Entry(r2, textvariable=self.t_start, width=11).pack(side="left", padx=6)
-        ttk.Label(r2, text=t("to")).pack(side="left")
-        ttk.Entry(r2, textvariable=self.t_end, width=11).pack(side="left", padx=6)
+        r2.pack(fill="x", pady=(px(10), 0))
+        ttk.Label(r2, text=t("from"), style="Field.TLabel").pack(side="left")
+        ttk.Entry(r2, textvariable=self.t_start, width=10,
+                  font=(MONO, 10)).pack(side="left", padx=(px(6), px(12)))
+        ttk.Label(r2, text=t("to"), style="Field.TLabel").pack(side="left")
+        ttk.Entry(r2, textvariable=self.t_end, width=10,
+                  font=(MONO, 10)).pack(side="left", padx=(px(6), px(10)))
         ttk.Label(r2, text=t("time_hint"),
-                  style="Dim.TLabel").pack(side="left", padx=(4, 16))
+                  style="Dim.TLabel").pack(side="left", padx=(0, px(18)))
         self.sep_chk = ttk.Checkbutton(r2, text=t("sep_voc"),
                                        variable=self.sep_var)
         self.sep_chk.pack(side="left")
-        self.upd_btn = ttk.Button(r2, text=t("upd_ytdlp"), style="Small.TButton",
-                                  command=self.update_ytdlp)
-        self.upd_btn.pack(side="right")
-        self.analyze_btn = ttk.Button(r2, text=t("analyze"),
+
+        r3 = ttk.Frame(step1)
+        r3.pack(fill="x", pady=(px(12), 0))
+        self.analyze_btn = ttk.Button(r3, text=t("analyze"),
                                       style="Accent.TButton",
                                       command=self.start_analyze)
-        self.analyze_btn.pack(side="right", padx=(0, 10))
+        self.analyze_btn.pack(side="left")
+        ttk.Label(r3, text=t("demucs_hint"), style="Dim.TLabel").pack(
+            side="left", padx=(px(12), 0))
+        self.upd_btn = ttk.Button(r3, text=t("upd_ytdlp"), style="Ghost.TButton",
+                                  command=self.update_ytdlp)
+        self.upd_btn.pack(side="right")
 
         # ---------------- Schritt 2: Clips und Spuren / clips and tracks
-        step2 = ttk.LabelFrame(root, text=t("s2"), padding=(10, 6, 10, 8))
-        step2.pack(fill="both", expand=True, pady=(8, 0))
+        step2, h2 = self._card(root, 2, t("s2"), expand=True)
+        self.stats_lbl = ttk.Label(h2, text="", style="Stats.TLabel")
+        self.stats_lbl.pack(side="right", pady=(px(3), 0))
+        self.cast_lbl = ttk.Label(h2, text="", style="Cast.TLabel")
 
         bar = ttk.Frame(step2)
         bar.pack(fill="x")
-        self.play_btn = ttk.Button(bar, text="▶  " + t("btn_play"), width=12,
+        self.play_btn = ttk.Button(bar, text="▶  " + t("btn_play"),
                                    command=self._play_selected)
         self.play_btn.pack(side="left")
-        ttk.Button(bar, text="■", width=3,
-                   command=self._stop_play).pack(side="left", padx=(2, 6))
+        ttk.Button(bar, text="■", style="Tool.TButton", width=2,
+                   command=self._stop_play).pack(side="left", padx=(px(2), px(8)))
         self.pad_chk = ttk.Checkbutton(bar, text=t("play_pad"),
                                        variable=self.play_pad, takefocus=False,
                                        command=self._play_pad_changed)
-        self.pad_chk.pack(side="left", padx=(0, 10))
-        ttk.Button(bar, text=t("zoom_in"), width=8, style="Small.TButton",
-                   command=lambda: self._zoom(0.6)).pack(side="left")
-        ttk.Button(bar, text=t("zoom_out"), width=8, style="Small.TButton",
-                   command=lambda: self._zoom(1.7)).pack(side="left", padx=2)
-        ttk.Button(bar, text=t("zoom_all"), width=12, style="Small.TButton",
-                   command=self._zoom_all).pack(side="left")
-        ttk.Button(bar, text=t("zoom_sel"), width=14, style="Small.TButton",
-                   command=self._zoom_selected).pack(side="left", padx=2)
-        self.hscroll = ttk.Scale(bar, from_=0.0, to=1.0, orient="horizontal",
-                                 command=self._scroll_to)
-        self.hscroll.pack(side="left", fill="x", expand=True, padx=10)
-
+        self.pad_chk.pack(side="left", padx=(0, px(14)))
+        zoom = ttk.Frame(bar)
+        zoom.pack(side="left")
+        for key, cmd in (("zoom_out", lambda: self._zoom(1.7)),
+                         ("zoom_in", lambda: self._zoom(0.6)),
+                         ("zoom_all", self._zoom_all),
+                         ("zoom_sel", self._zoom_selected)):
+            ttk.Button(zoom, text=t(key), style="Ghost.TButton",
+                       command=cmd).pack(side="left")
         self.subs_mb = ttk.Menubutton(bar, text=t("subs_menu"))
         sm = self._menu(self.subs_mb)
         sm.add_command(label=t("subs_file"), command=self.import_subs_file)
@@ -1039,20 +1368,23 @@ class App(tk.Tk):
                                  command=self._detect_setting_changed)
         dm.add_cascade(label=t("maxlen"), menu=sub2)
         self.det_mb.configure(menu=dm)
-        self.det_mb.pack(side="right", padx=(0, 6))
-        ttk.Button(bar, text=t("add_track"), width=9, style="Small.TButton",
-                   command=self.add_track).pack(side="right", padx=(0, 6))
-        self.redo_btn = ttk.Button(bar, text="↷", width=3, style="Small.TButton",
+        self.det_mb.pack(side="right", padx=(0, px(6)))
+        ttk.Button(bar, text=t("add_track"),
+                   command=self.add_track).pack(side="right", padx=(0, px(6)))
+        self.redo_btn = ttk.Button(bar, text="↷", width=2, style="Tool.TButton",
                                    command=self.redo)
-        self.redo_btn.pack(side="right", padx=(0, 10))
-        self.undo_btn = ttk.Button(bar, text="↶", width=3, style="Small.TButton",
+        self.redo_btn.pack(side="right", padx=(0, px(14)))
+        self.undo_btn = ttk.Button(bar, text="↶", width=2, style="Tool.TButton",
                                    command=self.undo)
-        self.undo_btn.pack(side="right", padx=(0, 2))
+        self.undo_btn.pack(side="right", padx=(0, px(2)))
 
+        # Zeitleiste: der Rahmen zeigt, ob sie die Tastatur hat.
+        # Timeline: its frame shows whether it has the keyboard.
         self.canvas = tk.Canvas(step2, height=RULER_H + WAVE_H + LANE_H + ADD_H,
-                                bg=BG3, highlightthickness=1,
-                                highlightbackground=LINE)
-        self.canvas.pack(fill="x", pady=(6, 0))
+                                bg=FIELD, highlightthickness=1,
+                                highlightbackground=LINE_SOFT,
+                                highlightcolor=AMBER_DEEP)
+        self.canvas.pack(fill="x", pady=(px(10), 0))
         self.canvas.bind("<Configure>", lambda e: self.draw_wave())
         self.canvas.bind("<ButtonPress-1>", self._canvas_down)
         self.canvas.bind("<B1-Motion>", self._canvas_move)
@@ -1064,54 +1396,58 @@ class App(tk.Tk):
         self.canvas.bind("<Double-Button-1>", self._canvas_double)
         self.canvas.bind("<Button-3>", self._canvas_right)
 
+        # Der Regler verschiebt den sichtbaren Ausschnitt - er gehoert unter
+        # die Zeitleiste wie ein Scrollbalken. / pans the view, so it sits
+        # under the timeline like a scrollbar.
+        self.hscroll = ttk.Scale(step2, from_=0.0, to=1.0, orient="horizontal",
+                                 command=self._scroll_to)
+        self.hscroll.pack(fill="x", pady=(px(4), 0), padx=(GUTTER, 0))
         hint = ttk.Frame(step2)
-        hint.pack(fill="x", pady=(3, 0))
-        self.stats_lbl = ttk.Label(hint, text="", style="Dim.TLabel")
-        self.stats_lbl.pack(side="left")
-        ttk.Label(hint, text=t("mouse_hint"), style="Dim.TLabel").pack(side="right")
+        hint.pack(fill="x", pady=(px(5), 0))
+        ttk.Label(hint, text=t("mouse_hint"), style="Dim.TLabel").pack(side="left")
 
         # ---- Clip-Streifen: Bild links, Felder rechts / clip strip
         strip = ttk.Frame(step2)
-        strip.pack(fill="x", pady=(6, 0))
-        self.preview = tk.Canvas(strip, width=224, height=126, bg="#000000",
-                                 highlightthickness=1, highlightbackground=LINE)
-        self.preview.pack(side="left")
-        fields = ttk.Frame(strip, padding=(10, 0, 0, 0))
+        strip.pack(fill="x", pady=(px(12), 0))
+        self.preview = tk.Canvas(strip, width=px(224), height=px(126), bg=FIELD,
+                                 highlightthickness=0)
+        self.preview.pack(side="left", anchor="n")
+        self._preview_placeholder("preview_none")
+        fields = ttk.Frame(strip, padding=(px(16), 0, 0, 0))
         fields.pack(side="left", fill="both", expand=True)
 
         f1 = ttk.Frame(fields)
         f1.pack(fill="x")
-        self.insp_title = ttk.Label(f1, text=t("insp_none"), style="Insp.TLabel",
-                                    width=16)
+        self.insp_title = ttk.Label(f1, text=t("insp_none"), style="Insp.TLabel")
         self.insp_title.pack(side="left")
-        ttk.Label(f1, text=t("insp_track")).pack(side="left", padx=(8, 4))
+        ttk.Label(f1, text=t("insp_track"), style="Field.TLabel").pack(
+            side="left", padx=(px(8), px(6)))
         self.track_box = ttk.Combobox(f1, textvariable=self.track_var, width=16,
                                       state="readonly")
         self.track_box.pack(side="left")
         self.track_box.bind("<<ComboboxSelected>>", self._insp_track_changed)
-        ttk.Label(f1, text=t("insp_start")).pack(side="left", padx=(14, 4))
+        ttk.Label(f1, text=t("insp_start"), style="Field.TLabel").pack(
+            side="left", padx=(px(16), px(6)))
         e1 = ttk.Entry(f1, textvariable=self.start_var, width=9, font=(MONO, 10))
         e1.pack(side="left")
         e1.bind("<Return>", lambda e: self._insp_time_apply())
         e1.bind("<FocusOut>", lambda e: self._insp_time_apply())
-        ttk.Label(f1, text=t("insp_end")).pack(side="left", padx=(8, 4))
+        ttk.Label(f1, text=t("insp_end"), style="Field.TLabel").pack(
+            side="left", padx=(px(10), px(6)))
         e2 = ttk.Entry(f1, textvariable=self.end_var, width=9, font=(MONO, 10))
         e2.pack(side="left")
         e2.bind("<Return>", lambda e: self._insp_time_apply())
         e2.bind("<FocusOut>", lambda e: self._insp_time_apply())
-        for key, cmd in (("btn_delete", self._delete_selected),
-                         ("btn_dup", self._duplicate_selected),
-                         ("btn_split", self._split_selected)):
-            ttk.Button(f1, text=t(key), style="Small.TButton",
-                       command=cmd).pack(side="right", padx=(4, 0))
 
+        # Der Untertitel ist das Feld, in dem man am meisten tippt: gross.
+        # The subtitle is where most of the typing happens: give it room.
         f2 = ttk.Frame(fields)
-        f2.pack(fill="x", pady=(10, 0))
-        ttk.Label(f2, text=t("caption")).pack(side="left")
+        f2.pack(fill="x", pady=(px(12), 0))
+        ttk.Label(f2, text=t("caption"), style="Field.TLabel").pack(side="left")
         self.caption_entry = ttk.Entry(f2, textvariable=self.caption_var,
-                                       font=(FONT, 11))
-        self.caption_entry.pack(side="left", fill="x", expand=True, padx=(6, 0),
-                                ipady=3)
+                                       font=(FONT, 12))
+        self.caption_entry.pack(side="left", fill="x", expand=True,
+                                padx=(px(8), 0), ipady=px(3))
         self.caption_entry.bind("<Return>", self._caption_next)
         self.caption_entry.bind("<FocusOut>", lambda e: self._caption_save())
         self.caption_entry.bind("<Escape>", lambda e: self.canvas.focus_set())
@@ -1119,96 +1455,113 @@ class App(tk.Tk):
         self.caption_entry.bind("<Control-space>",
                                 lambda e: (self._play_selected(), "break")[1])
         f3 = ttk.Frame(fields)
-        f3.pack(fill="x", pady=(3, 0))
+        f3.pack(fill="x", pady=(px(6), 0))
         ttk.Label(f3, text=t("caption_hint"), style="Dim.TLabel").pack(side="left")
         f4 = ttk.Frame(fields)
-        f4.pack(fill="x", pady=(1, 0))
-        ttk.Label(f4, text=t("keys_hint"), style="Dim.TLabel").pack(side="left")
-        f5 = ttk.Frame(fields)
-        f5.pack(fill="x", pady=(1, 0))
-        ttk.Label(f5, text=t("tracks_hint"), style="Dim.TLabel").pack(side="left")
+        f4.pack(fill="x", pady=(px(8), 0))
+        for key, cmd in (("btn_split", self._split_selected),
+                         ("btn_dup", self._duplicate_selected),
+                         ("btn_delete", self._delete_selected)):
+            ttk.Button(f4, text=t(key), command=cmd).pack(side="left",
+                                                          padx=(0, px(6)))
 
-        # ---- Liste / list
+        # ---- Liste / list: Farbquadrat je Sprecher, Schrift bleibt lesbar
         mid = ttk.Frame(step2)
-        mid.pack(fill="both", expand=True, pady=(8, 0))
-        cols = ("nr", "track", "start", "end", "len", "caption")
-        self.tree = ttk.Treeview(mid, columns=cols, show="headings", height=3)
-        for c, key, w in (("nr", "col_nr", 36), ("track", "col_track", 130),
-                          ("start", "col_start", 80), ("end", "col_end", 80),
-                          ("len", "col_len", 64), ("caption", "col_caption", 320)):
-            self.tree.heading(c, text=t(key))
-            self.tree.column(c, width=w, minwidth=w,
+        mid.pack(fill="both", expand=True, pady=(px(12), 0))
+        cols = ("track", "start", "end", "len", "caption")
+        self.tree = ttk.Treeview(mid, columns=cols, show="tree headings",
+                                 height=4)
+        self.tree.heading("#0", text=t("col_nr"), anchor="w")
+        self.tree.column("#0", width=px(64), minwidth=px(64), stretch=False,
+                         anchor="w")
+        for c, key, w in (("track", "col_track", 140), ("start", "col_start", 84),
+                          ("end", "col_end", 84), ("len", "col_len", 70),
+                          ("caption", "col_caption", 320)):
+            self.tree.heading(c, text=t(key),
+                              anchor="w" if c in ("track", "caption") else "center")
+            self.tree.column(c, width=px(w), minwidth=px(w),
                              anchor="w" if c in ("track", "caption") else "center",
                              stretch=(c == "caption"))
+        self.tree.tag_configure("odd", background="#141518")
         self.tree.pack(side="left", fill="both", expand=True)
         sb = ttk.Scrollbar(mid, orient="vertical", command=self.tree.yview)
-        sb.pack(side="left", fill="y")
+        sb.pack(side="left", fill="y", padx=(px(3), 0))
         self.tree.configure(yscrollcommand=sb.set)
         self.tree.bind("<<TreeviewSelect>>", self._tree_select)
         self.tree.bind("<Double-Button-1>", lambda e: self._focus_caption())
-        for i, col in enumerate(TRACK_COLORS):
-            self.tree.tag_configure("t%d" % i, foreground=col)
 
         # ---------------- Schritt 3: Bauen / build
-        step3 = ttk.LabelFrame(root, text=t("s3"), padding=(10, 6, 10, 8))
-        step3.pack(fill="x", pady=(8, 0))
+        step3, _h3 = self._card(root, 3, t("s3"))
 
         g = ttk.Frame(step3)
         g.pack(fill="x")
-        ttk.Label(g, text=t("pack_name")).pack(side="left")
-        ttk.Entry(g, textvariable=self.pack_name, width=26).pack(side="left", padx=6)
-        ttk.Label(g, text=t("author")).pack(side="left", padx=(8, 0))
-        ttk.Entry(g, textvariable=self.author, width=22).pack(side="left", padx=6)
+        ttk.Label(g, text=t("pack_name"), style="Field.TLabel").pack(side="left")
+        ttk.Entry(g, textvariable=self.pack_name, width=28).pack(
+            side="left", padx=(px(6), px(14)))
+        ttk.Label(g, text=t("author"), style="Field.TLabel").pack(side="left")
+        ttk.Entry(g, textvariable=self.author, width=20).pack(
+            side="left", padx=(px(6), px(14)))
         ttk.Checkbutton(g, text=t("is_dub"), variable=self.is_dub).pack(
-            side="left", padx=(16, 6))
-        ttk.Combobox(g, textvariable=self.vheight, width=7, state="readonly",
+            side="left")
+        ttk.Combobox(g, textvariable=self.vheight, width=6, state="readonly",
                      values=("1080", "720", "540", "480", "360")).pack(side="right")
-        ttk.Label(g, text=t("vheight")).pack(side="right", padx=(10, 4))
+        ttk.Label(g, text=t("vheight"), style="Field.TLabel").pack(
+            side="right", padx=(px(10), px(6)))
 
         act = ttk.Frame(step3)
-        act.pack(fill="x", pady=(8, 0))
-        self.build_btn = ttk.Button(act, text=t("build"),
-                                    style="Accent.TButton", command=self.start_build)
-        self.build_btn.pack(side="left")
-        self.zip_btn = ttk.Button(act, text=t("zip"), style="Go.TButton",
+        act.pack(fill="x", pady=(px(14), 0))
+        # Fuer DisDubs ist das ZIP das Ergebnis - es baut bei Bedarf selbst.
+        # For DisDubs the zip is the deliverable - it builds first if needed.
+        self.zip_btn = ttk.Button(act, text=t("zip"), style="Accent.TButton",
                                   command=self.zip_pack)
-        self.zip_btn.pack(side="left", padx=8)
-        ttk.Button(act, text=t("open_out"),
-                   command=self._open_out).pack(side="left")
+        self.zip_btn.pack(side="left")
+        self.build_btn = ttk.Button(act, text=t("build"), command=self.start_build)
+        self.build_btn.pack(side="left", padx=(px(8), 0))
+        ttk.Button(act, text=t("open_out"), style="Ghost.TButton",
+                   command=self._open_out).pack(side="left", padx=(px(8), 0))
         self.install_btn = ttk.Button(act, text=t("install"), command=self.install)
-        self.install_btn.pack(side="left", padx=(16, 0))
-        ttk.Button(act, text=t("browse"), width=9,
-                   command=self._pick_target).pack(side="left", padx=(6, 0))
+        self.install_btn.pack(side="right")
+        ttk.Button(act, text=t("browse"), style="Ghost.TButton",
+                   command=self._pick_target).pack(side="right", padx=(px(4), px(8)))
         ttk.Entry(act, textvariable=self.target_dir).pack(
-            side="left", fill="x", expand=True, padx=(4, 0))
-        self.log_btn = ttk.Button(act, text="", style="Small.TButton",
-                                  command=self._toggle_log)
-        self.log_btn.pack(side="right", padx=(10, 0))
+            side="right", fill="x", expand=True, padx=(px(6), 0))
+        ttk.Label(act, text=t("target_dir"), style="Field.TLabel").pack(
+            side="right", padx=(px(40), 0))
 
-        foot = ttk.Frame(root)
-        foot.pack(fill="x", pady=(8, 0))
-        self.status = ttk.Label(foot, text=t("ready"), style="Dim.TLabel")
+        # ---------------- Fortschritt und Protokoll / progress and log
+        foot_card = ttk.Frame(root, style="Card.TFrame",
+                              padding=(px(16), px(9), px(16), px(9)))
+        foot_card.pack(fill="x")
+        foot = ttk.Frame(foot_card)
+        foot.pack(fill="x")
+        self.status = ttk.Label(foot, text=t("ready"), style="Status.TLabel")
         self.status.pack(side="left", fill="x", expand=True)
-        self.cancel_btn = ttk.Button(foot, text=t("cancel"), style="Small.TButton",
+        self.log_btn = ttk.Button(foot, text="", style="Ghost.TButton",
+                                  command=self._toggle_log)
+        self.log_btn.pack(side="right", padx=(px(6), 0))
+        self.cancel_btn = ttk.Button(foot, text=t("cancel"), style="Ghost.TButton",
                                      command=self.cancel_job, state="disabled")
-        self.cancel_btn.pack(side="right", padx=(8, 0))
+        self.cancel_btn.pack(side="right", padx=(px(6), 0))
         self.prog = ttk.Progressbar(foot, mode="determinate", maximum=100,
-                                    length=260)
-        self.prog.pack(side="right")
-        self.built_lbl = ttk.Label(foot, text="", style="Dim.TLabel")
-        self.built_lbl.pack(side="right", padx=(0, 14))
+                                    length=px(240))
+        self.prog.pack(side="right", pady=(px(2), 0))
+        self.built_lbl = ttk.Label(foot, text="", style="Built.TLabel")
+        self.built_lbl.pack(side="right", padx=(0, px(14)))
         self._url_span_guard()
 
-        self.logf = ttk.Frame(root)
-        self.log = tk.Text(self.logf, height=5, bg=BG3, fg="#93a0c0",
-                           insertbackground=FG, relief="flat",
-                           font=(MONO, 9), wrap="none")
+        self.logf = ttk.Frame(foot_card)
+        self.log = tk.Text(self.logf, height=6, bg=FIELD, fg="#8b929c",
+                           insertbackground=INK, relief="flat", bd=0,
+                           padx=px(10), pady=px(8), highlightthickness=0,
+                           selectbackground=AMBER_DEEP, font=(MONO, 9),
+                           wrap="none")
         self.log.pack(side="left", fill="both", expand=True)
         lsb = ttk.Scrollbar(self.logf, orient="vertical", command=self.log.yview)
-        lsb.pack(side="left", fill="y")
+        lsb.pack(side="left", fill="y", padx=(px(3), 0))
         self.log.configure(yscrollcommand=lsb.set)
         self._apply_log_state()
 
+        self._apply_tool_state()
         self._sync_src()
         self._refresh_track_box()
         self._update_undo_buttons()
@@ -2112,6 +2465,7 @@ class App(tk.Tk):
             used = set()
             for i, tr in enumerate(info["tracks"][:MAX_TRACKS]):
                 col = tr.get("color")
+                col = LEGACY_COLORS.get(str(col).lower(), col)
                 if col not in TRACK_COLORS or col in used:
                     free = [c for c in TRACK_COLORS if c not in used]
                     col = free[0] if free else TRACK_COLORS[i % MAX_TRACKS]
@@ -2539,10 +2893,13 @@ class App(tk.Tk):
         for i, c in enumerate(self.clips):
             tr = self.tracks[c["track"]] if 0 <= c["track"] < len(self.tracks) \
                 else {"name": "?"}
-            self.tree.insert("", "end", iid=str(i), values=(
-                i + 1, tr["name"], "%.3f" % c["start"], "%.3f" % c["end"],
+            col = self.tracks[c["track"]]["color"] \
+                if 0 <= c["track"] < len(self.tracks) else INK_FAINT
+            self.tree.insert("", "end", iid=str(i), text=" %d" % (i + 1),
+                             image=self._swatch(col), values=(
+                tr["name"], "%.3f" % c["start"], "%.3f" % c["end"],
                 "%.2f" % (c["end"] - c["start"]), c.get("caption", "")),
-                tags=(self._track_tag(c["track"]),))
+                tags=("odd",) if i % 2 else ())
         if self.selected is not None and 0 <= self.selected < len(self.clips):
             self._syncing = True
             try:
@@ -2573,10 +2930,23 @@ class App(tk.Tk):
                 if b["start"] < a["end"] - 1e-6:
                     ov += 1
         if ov:
-            txt += "  ·  " + t("overlap_note", ov)
+            txt += ", " + t("overlap_note", ov)
+        parts = pc.disdubs_parts(self.tracks, self.clips)
         if len(self.tracks) > 1:
-            txt += "  ·  " + t("stats_parts", pc.disdubs_parts(self.tracks, self.clips))
+            txt += "     " + t("stats_parts", parts)
         self.stats_lbl.configure(text=txt)
+        # Mehrere Spuren, aber DisDubs wuerde alles als EINE Rolle besetzen:
+        # dann - und nur dann - den Hinweis zum Benennen zeigen.
+        # Several tracks but DisDubs would cast one part: only then show how
+        # to name them.
+        try:
+            if len(self.tracks) > 1 and parts <= 1:
+                self.cast_lbl.configure(text="\u26a0  " + t("tracks_hint"))
+                self.cast_lbl.pack(side="left", padx=(px(14), 0))
+            else:
+                self.cast_lbl.pack_forget()
+        except Exception:
+            pass
 
     def _tree_select(self, _e=None):
         if self._syncing:
@@ -2709,7 +3079,8 @@ class App(tk.Tk):
         self.preview.delete("all")
         w = int(self.preview.cget("width"))
         h = int(self.preview.cget("height"))
-        self.preview.create_text(w // 2, h // 2, text=t(key), fill="#4a5070",
+        self.preview.create_rectangle(0, 0, w, h, fill=FIELD, outline="")
+        self.preview.create_text(w // 2, h // 2, text=t(key), fill=INK_FAINT,
                                  font=(FONT, 9))
 
     def _schedule_preview(self, clip):
@@ -2736,7 +3107,7 @@ class App(tk.Tk):
 
         def work():
             try:
-                pc.extract_frame(video, tt, out, width=224)
+                pc.extract_frame(video, tt, out, width=px(224))
                 self.msgq.put(("preview", (key, out)))
             except Exception:
                 pass
@@ -2760,7 +3131,8 @@ class App(tk.Tk):
         if self.selected is not None and 0 <= self.selected < len(self.clips):
             c = self.clips[self.selected]
             col = self.tracks[c["track"]]["color"]
-            self.preview.create_rectangle(0, h - 5, w, h, fill=col, outline="")
+            self.preview.create_rectangle(0, h - px(4), w, h, fill=col,
+                                          outline="")
 
     # ------------------------------------------------------- Clip-Aktionen
     def _delete_selected(self):
@@ -2886,7 +3258,7 @@ class App(tk.Tk):
         def frames_work():
             outdir = os.path.join(work, "play_%d" % token)
             try:
-                pc.extract_frames_range(video, a, b, outdir, fps=PLAY_FPS, width=224)
+                pc.extract_frames_range(video, a, b, outdir, fps=PLAY_FPS, width=px(224))
             except Exception:
                 pass
 
@@ -3029,8 +3401,12 @@ class App(tk.Tk):
             return
         x = self._t2x(self.playhead)
         h = cv.winfo_height()
-        cv.create_line(x, 0, x, h, fill="#ffffff", width=1, tags="playhead")
-        cv.create_polygon(x - 5, 0, x + 5, 0, x, 7, fill="#ffffff",
+        # Rot nur, solange das Band laeuft - sonst Bernstein (DisDubs-Regel).
+        # Red only while the tape rolls, amber when parked (DisDubs' rule).
+        col = REC if self._play else AMBER
+        cv.create_line(x, 0, x, h, fill=col, width=1, tags="playhead")
+        k = px(5)
+        cv.create_polygon(x - k, 0, x + k, 0, x, k + px(3), fill=col,
                           outline="", tags="playhead")
 
     # ------------------------------------------------------------ Wellenform
@@ -3119,8 +3495,22 @@ class App(tk.Tk):
         h = max(1, cv.winfo_height())
 
         if not len(self.wave_data) or self.duration <= 0:
-            cv.create_text(w / 2, h / 2, fill="#5a6180", text=t("canvas_empty"),
-                           font=(FONT, 11), width=w - 40, justify="center")
+            # Angedeutete Welle als Platzhalter - die Flaeche zeigt, was hier
+            # entsteht, statt tot zu wirken.
+            # A suggested wave as a placeholder: shows what will appear here.
+            mid = h / 2.0
+            step = px(6)
+            for x in range(px(12), w - px(12), step):
+                amp = px(5) + px(9) * abs(((x // step) % 18) - 9) / 9.0
+                cv.create_line(x, mid - amp, x, mid + amp, fill="#1c1f24",
+                               width=max(2, px(3)), capstyle="round")
+            msg = cv.create_text(w / 2, mid, fill=INK_DIM, text=t("canvas_empty"),
+                                 font=(FONT, 11), width=w - px(120),
+                                 justify="center")
+            x0, y0, x1, y1 = cv.bbox(msg)
+            cv.create_rectangle(x0 - px(18), y0 - px(8), x1 + px(18), y1 + px(8),
+                                fill=FIELD, outline="")
+            cv.tag_raise(msg)
             return
 
         span = max(1e-6, self.view_b - self.view_a)
@@ -3136,54 +3526,63 @@ class App(tk.Tk):
             peaks = pc.waveform_peaks(self.wave_data[a:b], tw)
             self._peak_cache = (key, peaks)
 
+        top, bot = RULER_H, RULER_H + WAVE_H
+
         # ---- Rinne links / gutter
-        cv.create_rectangle(0, 0, GUTTER, h, fill="#1a1b22", outline="")
+        cv.create_rectangle(0, 0, GUTTER, h, fill=PANEL, outline="")
         cv.create_line(GUTTER, 0, GUTTER, h, fill=LINE)
 
-        # ---- Lineal / ruler
-        cv.create_rectangle(GUTTER, 0, w, RULER_H, fill="#1a1b22", outline="")
+        # ---- Lineal / ruler: Timecode in Monospace, wie am Schneidetisch
+        cv.create_rectangle(GUTTER, 0, w, RULER_H, fill="#16181b", outline="")
         step = self._nice_step(span)
         tt = (int(self.view_a / step)) * step
         while tt <= self.view_b:
             x = self._t2x(tt)
             if x >= GUTTER:
-                cv.create_line(x, RULER_H - 6, x, RULER_H, fill="#4a4e63")
-                cv.create_line(x, RULER_H, x, h, fill="#20222b")
-                cv.create_text(x + 3, RULER_H / 2, anchor="w", fill="#7d84a0",
+                cv.create_line(x, RULER_H - px(5), x, RULER_H, fill=INK_FAINT)
+                cv.create_line(x, bot, x, h, fill=LINE_SOFT)
+                cv.create_text(x + px(4), RULER_H / 2, anchor="w", fill=INK_FAINT,
                                text=pc.fmt_time(tt)[:-2], font=(MONO, 8))
             tt += step
         cv.create_line(GUTTER, RULER_H, w, RULER_H, fill=LINE)
 
-        # ---- Wellenform / waveform, mit Clipspannen in Sprecherfarbe
-        top, bot = RULER_H, RULER_H + WAVE_H
+        # ---- Wellenform / waveform. Clipspannen getoent in Sprecherfarbe;
+        # innerhalb eines Clips leuchtet die Welle in dieser Farbe.
+        # Clip spans tinted per speaker; inside a clip the wave lights up.
         mid = (top + bot) / 2.0
-        amp = (WAVE_H / 2.0) - 6
+        amp = (WAVE_H / 2.0) - px(6)
+        tint = [None] * len(peaks)
         for i, c in enumerate(self.clips):
             if c["end"] < self.view_a or c["start"] > self.view_b:
                 continue
             x0, x1 = self._t2x(c["start"]), self._t2x(c["end"])
             col = self.tracks[c["track"]]["color"]
-            cv.create_rectangle(x0, top + 1, x1, bot - 1, fill=col, outline="",
-                                stipple="gray25" if i != self.selected else "gray50")
-        for x, (lo, hi) in enumerate(peaks):
-            y0 = mid - hi * amp
-            y1 = mid - lo * amp
-            if abs(y1 - y0) < 1:
-                y1 = y0 + 1
-            cv.create_line(GUTTER + x, y0, GUTTER + x, y1, fill=WAVE)
-        cv.create_line(GUTTER, mid, w, mid, fill=LINE)
-        cv.create_line(GUTTER, bot, w, bot, fill=LINE)
+            sel = (i == self.selected)
+            cv.create_rectangle(max(GUTTER, x0), top + 1, x1, bot,
+                                fill=_blend(FIELD, col, 0.22 if sel else 0.12),
+                                outline="")
+            lit = _blend(FIELD, col, 0.95 if sel else 0.75)
+            for x in range(max(0, int(x0 - GUTTER)), min(len(tint), int(x1 - GUTTER) + 1)):
+                tint[x] = lit
         # ---- markierter Abschnitt / the marked section
         if self.sel_span:
             sa, sb = self.sel_span
             x0, x1 = self._t2x(sa), self._t2x(sb)
             if x1 > GUTTER and x0 < w:
                 x0, x1 = max(GUTTER, x0), min(w, x1)
-                cv.create_rectangle(x0, RULER_H, x1, bot, fill=ACC2,
-                                    outline="", stipple="gray25")
-                cv.create_line(x0, RULER_H, x0, bot, fill=ACC2)
-                cv.create_line(x1, RULER_H, x1, bot, fill=ACC2)
-        cv.create_text(8, mid, anchor="w", fill="#5a6180", font=(FONT, 9),
+                cv.create_rectangle(x0, top + 1, x1, bot,
+                                    fill=_blend(FIELD, LEADER, 0.14), outline="")
+                cv.create_line(x0, top, x0, bot, fill=LEADER)
+                cv.create_line(x1, top, x1, bot, fill=LEADER)
+        cv.create_line(GUTTER, mid, w, mid, fill=LINE_SOFT)
+        for x, (lo, hi) in enumerate(peaks):
+            y0 = mid - hi * amp
+            y1 = mid - lo * amp
+            if abs(y1 - y0) < 1:
+                y1 = y0 + 1
+            cv.create_line(GUTTER + x, y0, GUTTER + x, y1, fill=tint[x] or WAVE)
+        cv.create_line(GUTTER, bot, w, bot, fill=LINE)
+        cv.create_text(px(12), mid, anchor="w", fill=INK_FAINT, font=(FONT, 9),
                        text=("Vocals" if self.vocals_path else "Audio"))
 
         # ---- Spuren / lanes
@@ -3192,39 +3591,31 @@ class App(tk.Tk):
             y1 = y0 + LANE_H
             col = tr["color"]
             if i % 2:
-                cv.create_rectangle(GUTTER, y0, w, y1, fill="#17181e", outline="")
-            cv.create_line(GUTTER, y1, w, y1, fill=LINE)
+                cv.create_rectangle(GUTTER, y0, w, y1, fill=LANE_ALT, outline="")
+            cv.create_line(GUTTER, y1, w, y1, fill=LINE_SOFT)
             # Rinne: Farbstreifen + Name / gutter: colour bar + name
-            cv.create_rectangle(0, y0, 5, y1, fill=col, outline="")
-            cv.create_text(14, (y0 + y1) / 2, anchor="w", fill=FG,
-                           text=self._ellipsize(tr["name"], 16),
-                           font=(FONT + " Semibold", 10), tags=("lane%d" % i,))
-            cv.create_line(0, y1, GUTTER, y1, fill=LINE)
+            cv.create_rectangle(0, y0 + 1, px(4), y1, fill=col, outline="")
+            cv.create_text(px(14), (y0 + y1) / 2, anchor="w", fill=INK,
+                           text=self._ellipsize(tr["name"], 15),
+                           font=(SLATE_COND, 11), tags=("lane%d" % i,))
+            cv.create_line(0, y1, GUTTER, y1, fill=LINE_SOFT)
 
+        # ---- Clips: Nummer und Text auf dem Streifen, wie ein Rhythmusband
+        # Clips: number and line on the strip, like a rhythmo band
+        selected = None
         for i, c in enumerate(self.clips):
             if c["end"] < self.view_a or c["start"] > self.view_b:
                 continue
-            x0, x1 = self._t2x(c["start"]), self._t2x(c["end"])
-            x0, x1 = max(GUTTER, x0), max(GUTTER, x1)
-            y0 = self._lane_top(c["track"]) + 4
-            y1 = y0 + LANE_H - 8
-            col = self.tracks[c["track"]]["color"]
-            sel = (i == self.selected)
-            cv.create_rectangle(x0, y0, x1, y1, fill=col, outline="#ffffff" if sel else col,
-                                width=2 if sel else 1,
-                                stipple="" if sel else "gray75")
-            if x1 - x0 > 26:
-                label = "%d" % (i + 1)
-                cap = c.get("caption", "")
-                if cap and x1 - x0 > 60:
-                    label += "  " + self._ellipsize(cap, int((x1 - x0 - 24) / 6.5))
-                cv.create_text(x0 + 6, (y0 + y1) / 2, anchor="w",
-                               fill="#0d0e14" if sel else "#0f1017",
-                               text=label, font=(FONT + " Semibold", 9))
+            if i == self.selected:
+                selected = (i, c)
+                continue
+            self._draw_clip(cv, i, c, False)
+        if selected:
+            self._draw_clip(cv, selected[0], selected[1], True)
 
-        # ---- Spur hinzufuegen / add-track row
+        # ---- Spur hinzufuegen / add-track row (anklickbar = Bernstein)
         y0 = self._lane_top(len(self.tracks))
-        cv.create_text(14, y0 + ADD_H / 2, anchor="w", fill="#6f76a0",
+        cv.create_text(px(14), y0 + ADD_H / 2, anchor="w", fill=AMBER_DEEP,
                        text=t("add_track_row"), font=(FONT, 9), tags=("addtrack",))
 
         self._draw_playhead()
@@ -3235,6 +3626,38 @@ class App(tk.Tk):
                 self.hscroll.set(self.view_a / max(1e-6, self.duration - span))
             finally:
                 self._syncing = False
+
+    def _draw_clip(self, cv, i, c, sel):
+        x0, x1 = self._t2x(c["start"]), self._t2x(c["end"])
+        x0, x1 = max(GUTTER, x0), max(GUTTER, x1)
+        y0 = self._lane_top(c["track"]) + px(4)
+        y1 = y0 + LANE_H - px(8)
+        col = self.tracks[c["track"]]["color"]
+        lane_bg = LANE_ALT if c["track"] % 2 else FIELD
+        if sel:
+            cv.create_rectangle(x0 - 1, y0 - 1, x1 + 1, y1 + 1, fill=col,
+                                outline=AMBER, width=max(2, px(2)))
+            # Griffe an den Raendern: hier laesst sich trimmen.
+            # Handles on the edges: this is where you trim.
+            hh = (y1 - y0) * 0.32
+            ym = (y0 + y1) / 2.0
+            for gx in (x0 + px(3), x1 - px(3)):
+                cv.create_line(gx, ym - hh, gx, ym + hh, fill=AMBER_INK,
+                               width=max(2, px(2)))
+        else:
+            cv.create_rectangle(x0, y0, x1, y1, fill=_blend(lane_bg, col, 0.78),
+                                outline="")
+        if x1 - x0 > px(18):
+            ink = "#101114"
+            cv.create_text(x0 + px(8 if sel else 6), (y0 + y1) / 2, anchor="w",
+                           fill=ink, text="%d" % (i + 1), font=(SLATE, 10))
+            cap = c.get("caption", "")
+            room = x1 - x0 - px(34)
+            if cap and room > px(24):
+                cv.create_text(x0 + px(26 if sel else 24), (y0 + y1) / 2,
+                               anchor="w", fill=ink,
+                               text=self._ellipsize(cap, int(room / (6.4 * UI_SCALE))),
+                               font=(FONT, 9))
 
     @staticmethod
     def _ellipsize(text, n):
@@ -3357,17 +3780,18 @@ class App(tk.Tk):
             t0 = self._drag[1]
             if abs(tt - t0) > 0.01:
                 self.canvas.create_rectangle(
-                    self._t2x(min(t0, tt)), RULER_H, self._t2x(max(t0, tt)),
-                    RULER_H + WAVE_H, fill=ACC2, outline="", stipple="gray25",
+                    self._t2x(min(t0, tt)), RULER_H + 1, self._t2x(max(t0, tt)),
+                    RULER_H + WAVE_H, outline=LEADER, width=1, dash=(4, 3),
                     tags="selpreview")
             self._draw_playhead()
             return
         if kind == "new":
             _k, t0, lane = self._drag
             self.canvas.delete("newsel")
-            y0 = self._lane_top(lane) + 4
+            y0 = self._lane_top(lane) + px(4)
             self.canvas.create_rectangle(self._t2x(t0), y0, self._t2x(tt),
-                                         y0 + LANE_H - 8, outline=ACC2, width=2,
+                                         y0 + LANE_H - px(8), outline=AMBER,
+                                         width=max(2, px(2)), dash=(5, 3),
                                          tags="newsel")
             return
         # trimmen oder verschieben / trim or move: erst beim ersten Ruck
@@ -3981,6 +4405,7 @@ class App(tk.Tk):
         try:
             if self.state() == "normal":
                 self.cfg["geometry"] = self.geometry()
+                self.cfg["ui_scale"] = UI_SCALE
         except Exception:
             pass
         save_cfg(self.cfg)
@@ -4043,6 +4468,7 @@ class App(tk.Tk):
 
 def _main():
     appwin.set_app_id("DubForge")
+    appwin.set_dpi_aware()
     try:
         app = App()
     except Exception:
