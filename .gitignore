@@ -32,3 +32,6 @@ desktop.ini
 # Sitzungsprotokoll / session log
 dubforge.log
 dubstage.log
+# Setup.exe-Build / installer build output
+build/
+dist/

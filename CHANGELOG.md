@@ -7,6 +7,45 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-02
+
+### Added
+
+- **Merged upstream 1.3.0 (xmrius/dubstage).** DubForge can now write the
+  subtitles itself: **Subtitles ▾ → Recognise from the audio (Whisper)** runs
+  local speech recognition (faster-whisper) and fills the clips' subtitles in
+  the spoken language. Only empty subtitles are filled unless *Replace
+  existing subtitles* is ticked; moving or trimming clips re-assigns the
+  recognised words, and anything you typed by hand stays. Separated vocals are
+  used when Demucs ran. A video pack also gets `dub_video.srt` and
+  `dub_video.vtt` with the full transcript - DubStage and DisDubs both ignore
+  them, so packs stay importable. `Setup.bat` offers the speech recognition as
+  an optional part, and `caption_pack.py` adds captions to a finished pack.
+- **App icons.** DubForge and DubStage show their own icon in the window and
+  the taskbar instead of Python's, and are no longer grouped under "Python".
+- From upstream's DubStage: the menu shows a preview frame per pack, recording
+  shows a small "● REC" badge instead of a banner across the video, and a
+  failed MP4 export no longer throws away every take.
+
+### Changed
+
+- Upstream's new DubForge look (cards, new palette) was not taken: it restyles
+  the old single-waveform screen, which this fork replaced with the speaker
+  timeline. Upstream's Windows installer is in the repository, but its GitHub
+  workflows only run in upstream's repository; this fork still installs
+  through `Start DubForge.bat` / `Setup.bat`.
+
+### Fixed
+
+- **"Update yt-dlp" showed the wrong message** when nothing changed: two texts
+  shared one key. The hint now names the Python that actually needs updating.
+- **Demucs could fail to read audio** because ffmpeg in `tools/` was not on its
+  PATH; `requirements-demucs.txt` keeps torch/torchaudio below 2.9.
+- **A pack name of `..` or `.` could delete the program or packs folder**, and
+  copying a pack into its own folder deleted it (both from upstream).
+- After a self-update the app restarts with the Python it was running on
+  rather than whichever one is first on the PATH.
+
 ## [1.4.2] - 2026-08-31
 
 ### Fixed
@@ -494,7 +533,8 @@ switchable at runtime.
   clip lengths it lands one sample short, which previously raised mid-playback
   and froze the interface.
 
-[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.3.1...v1.4.0

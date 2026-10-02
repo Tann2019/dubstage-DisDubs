@@ -35,6 +35,8 @@ from tkinter import ttk, filedialog, messagebox, simpledialog
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dubforge_core as pc
 import updater as upd
+import appwin
+import transcription as asr
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(APP_DIR, "packs")
@@ -120,10 +122,10 @@ T = {
                      "update it first if downloads fail."),
     "st_upd":       ("Aktualisiere yt-dlp ...", "Updating yt-dlp ..."),
     "upd_done":     ("Jetzt: yt-dlp %s", "Now: yt-dlp %s"),
-    "upd_fail":     ("Aktualisierung hat nichts geaendert. Im Terminal:\n"
-                     "py -m pip install --upgrade yt-dlp",
+    "ytdlp_fail":   ("Aktualisierung hat nichts geaendert. Im Terminal:\n"
+                     "\"%s\" -m pip install --upgrade yt-dlp",
                      "The update changed nothing. In a terminal:\n"
-                     "py -m pip install --upgrade yt-dlp"),
+                     "\"%s\" -m pip install --upgrade yt-dlp"),
     "upd_same":     ("Die Version ist unveraendert: %s\n\n"
                      "Meist liegt eine aeltere yt-dlp.exe im PATH und hat "
                      "Vorrang vor der Installation, die pip erneuert hat. "
@@ -338,6 +340,34 @@ T = {
                      "Import from SRT/VTT file ..."),
     "subs_yt":      ("Von YouTube holen (%s)", "Fetch from YouTube (%s)"),
     "subs_clear":   ("Alle Untertitel loeschen", "Clear all subtitles"),
+    "subs_asr":     ("Aus dem Ton erkennen (Whisper) ...",
+                     "Recognise from the audio (Whisper) ..."),
+    "asr_t":        ("Spracherkennung", "Speech recognition"),
+    "asr_language": ("Gesprochene Sprache (Code):", "Spoken language (code):"),
+    "asr_model":    ("Modell:", "Model:"),
+    "asr_device":   ("Geraet:", "Device:"),
+    "asr_replace":  ("Vorhandene Untertitel ersetzen", "Replace existing subtitles"),
+    "asr_generate": ("Untertitel generieren", "Generate captions"),
+    "asr_hint":     ("fr = Franzoesisch, en = Englisch, de = Deutsch, zh = Chinesisch, "
+                     "ja = Japanisch.\nDer Text kommt in der gesprochenen Sprache - "
+                     "uebersetzt wird nicht.\nErstmalig wird das Modell geladen "
+                     "(large-v3: mehrere GB); der Ton bleibt lokal.\n"
+                     "Der Pack bekommt zusaetzlich dub_video.srt/.vtt mit dem "
+                     "ganzen Transkript.",
+                     "fr = French, en = English, de = German, zh = Chinese, "
+                     "ja = Japanese.\nThe text comes out in the spoken language - "
+                     "nothing is translated.\nFirst use downloads the model "
+                     "(large-v3: several GB); the audio stays local.\n"
+                     "The pack also gets dub_video.srt/.vtt with the full "
+                     "transcript."),
+    "asr_language_required": ("Bitte Sprachcode eingeben, z.B. fr fuer Franzoesisch.",
+                              "Enter a spoken language code, e.g. fr for French."),
+    "asr_empty":    ("Keine Sprache zugeordnet: %s", "No recognized speech mapped to: %s"),
+    "asr_error":    ("Spracherkennung fehlgeschlagen. Vorhandene Untertitel "
+                     "bleiben erhalten.\n%s",
+                     "Speech recognition failed. Existing captions are "
+                     "preserved.\n%s"),
+    "st_asr":       ("Spracherkennung ...", "Recognising speech ..."),
     "subs_over_t":  ("Untertitel", "Subtitles"),
     "subs_over":    ("%d Cues gefunden.\n\nAuch Clips ueberschreiben, die "
                      "schon einen Untertitel haben?\n(Nein = nur leere fuellen)",
@@ -571,6 +601,7 @@ class App(tk.Tk):
 
     def __init__(self):
         super().__init__()
+        appwin.set_icon(self, "DubForge")
         self.cfg = load_cfg()
         set_lang(self.cfg.get("lang") or pc.system_lang())
 
@@ -622,6 +653,8 @@ class App(tk.Tk):
         self.clips = []
         self.selected = None
         self._caption_for = None
+        self.transcript = None       # Whisper-Ergebnis zur Sitzung / for this session
+        self._remap_key = None
         self._ytdlp_age = None
         self.built_path = None
         self.dirty = False
@@ -685,6 +718,10 @@ class App(tk.Tk):
         self.vheight = tk.StringVar(value=c.get("vheight", "720"))
         self.target_dir = tk.StringVar(value=c.get("target_dir", ""))
         self.caption_var = tk.StringVar(value="")
+        self.asr_language = tk.StringVar(value=c.get("asr_language", ""))
+        self.asr_model = tk.StringVar(value=c.get("asr_model", "large-v3"))
+        self.asr_device = tk.StringVar(value=c.get("asr_device", "cpu"))
+        self.asr_replace = tk.BooleanVar(value=False)
         self.track_var = tk.StringVar(value="")
         self.start_var = tk.StringVar(value="")
         self.end_var = tk.StringVar(value="")
@@ -979,6 +1016,7 @@ class App(tk.Tk):
         sm.add_command(label=t("subs_file"), command=self.import_subs_file)
         sm.add_command(label=t("subs_yt", self._sub_lang_label()),
                        command=self.fetch_subs_youtube)
+        sm.add_command(label=t("subs_asr"), command=self.transcribe_dialog)
         sm.add_separator()
         sm.add_command(label=t("subs_clear"), command=self.clear_captions)
         self.subs_mb.configure(menu=sm)
@@ -1523,7 +1561,8 @@ class App(tk.Tk):
                 self._log(t("upd_same", ver))
                 messagebox.showwarning(t("title"), t("upd_same", ver))
             else:
-                messagebox.showwarning(t("title"), t("upd_fail"))
+                messagebox.showwarning(t("title"),
+                                       t("ytdlp_fail", pc.console_python()))
         self._bg(work, on_done=done)
 
     # -------------------------------------------------- Thread-Kommunikation
@@ -1903,6 +1942,8 @@ class App(tk.Tk):
         self.clips = []
         self.tracks = sess["tracks"]
         self.clips = sess["clips"]
+        self.transcript = None
+        self._remap_key = None
         self._preview_cache = {}
         self._preview_key = None
         self._peak_cache = (None, None)
@@ -2266,6 +2307,8 @@ class App(tk.Tk):
             else:
                 clips, dropped = pc.remove_span(self.clips, a, b)
             self.video_path, self.audio_path = new_src, new_audio
+            # Die Zeiten des Transkripts passen nach dem Schnitt nicht mehr.
+            self.transcript = None
             self.vocals_path, self.backing_path = new_voc, new_nov
             self.wave_data, self.wave_sr = data, sr
             self.duration = dur if dur > 0 else left
@@ -2491,6 +2534,7 @@ class App(tk.Tk):
 
     def refresh_list(self):
         self._normalize()
+        self._remap_captions()
         self.tree.delete(*self.tree.get_children())
         for i, c in enumerate(self.clips):
             tr = self.tracks[c["track"]] if 0 <= c["track"] < len(self.tracks) \
@@ -2596,6 +2640,8 @@ class App(tk.Tk):
         if self.clips[i].get("caption", "") != new:
             self._snapshot()
             self.clips[i]["caption"] = new
+            self.clips[i]["_manual_caption"] = True
+            self.clips[i].pop("_generated_caption", None)
             try:
                 self.tree.set(str(i), "caption", new)
             except Exception:
@@ -3504,12 +3550,121 @@ class App(tk.Tk):
         self.refresh_list()
         self.draw_wave()
 
+    def transcribe_dialog(self):
+        """Whisper-Untertitel: Sprache, Modell, Geraet waehlen und los."""
+        if self.busy:
+            messagebox.showinfo(t("dlg_busy_t"), t("dlg_busy"))
+            return
+        if not self.audio_path or not self.clips:
+            messagebox.showinfo(t("dlg_first_t"), t("dlg_first"))
+            return
+        dlg = tk.Toplevel(self)
+        dlg.title(t("asr_t"))
+        dlg.configure(bg=BG)
+        dlg.transient(self)
+        dlg.resizable(False, False)
+        body = ttk.Frame(dlg, padding=14)
+        body.pack(fill="both", expand=True)
+        row = ttk.Frame(body)
+        row.pack(fill="x")
+        ttk.Label(row, text=t("asr_language")).pack(side="left")
+        lang = ttk.Combobox(row, textvariable=self.asr_language,
+                            values=asr.LANGUAGES, width=6)
+        lang.pack(side="left", padx=(6, 14))
+        ttk.Label(row, text=t("asr_model")).pack(side="left")
+        ttk.Combobox(row, textvariable=self.asr_model, values=asr.MODELS,
+                     state="readonly", width=10).pack(side="left", padx=(6, 14))
+        ttk.Label(row, text=t("asr_device")).pack(side="left")
+        ttk.Combobox(row, textvariable=self.asr_device, values=("cpu", "cuda"),
+                     state="readonly", width=6).pack(side="left", padx=(6, 0))
+        ttk.Checkbutton(body, text=t("asr_replace"),
+                        variable=self.asr_replace).pack(anchor="w", pady=(10, 0))
+        ttk.Label(body, text=t("asr_hint"), style="Dim.TLabel",
+                  justify="left").pack(anchor="w", pady=(8, 0))
+        act = ttk.Frame(body)
+        act.pack(fill="x", pady=(12, 0))
+
+        def go():
+            if not self.asr_language.get().strip():
+                messagebox.showinfo(t("asr_t"), t("asr_language_required"),
+                                    parent=dlg)
+                return
+            dlg.destroy()
+            self.start_transcribe()
+        ttk.Button(act, text=t("asr_generate"), style="Accent.TButton",
+                   command=go).pack(side="right")
+        lang.focus_set()
+        dlg.bind("<Return>", lambda e: go())
+        dlg.bind("<Escape>", lambda e: dlg.destroy())
+
+    def start_transcribe(self):
+        if self.busy or not self.audio_path or not self.clips:
+            return
+        language = self.asr_language.get().strip().lower()
+        if not language:
+            return
+        self._caption_save()
+        self._save_cfg()
+        # Getrennte Stimmen erkennt Whisper sauberer als den Mix.
+        media = self.vocals_path or self.audio_path
+        model, device = self.asr_model.get(), self.asr_device.get()
+        overwrite = bool(self.asr_replace.get())
+        clips = [dict(c) for c in self.clips]
+        result = {}
+
+        def progress(message, percent):
+            self._log(message)
+            self._set_status(t("st_asr") + "  " + message, percent)
+
+        def work():
+            try:
+                transcript = asr.transcribe(media, language, model, device, progress)
+            except Exception as exc:
+                raise RuntimeError(t("asr_error", exc)) from exc
+            if pc.cancelled():
+                raise pc.Cancelled(pc.M("cancelled"))
+            result["transcript"] = transcript
+            result["captions"] = asr.map_captions(transcript, clips)
+
+        def done():
+            self._snapshot()
+            self.transcript = result["transcript"]
+            asr.apply_captions(self.clips, result["captions"], overwrite=overwrite)
+            self._remap_key = self._timing_key()
+            filled = sum(1 for c, text in zip(self.clips, result["captions"])
+                         if text and c.get("caption") == text)
+            self._log(t("subs_done", filled))
+            empty = [str(i + 1) for i, text in enumerate(result["captions"])
+                     if not text]
+            if empty:
+                self._log(t("asr_empty", ", ".join(empty)))
+            self.refresh_list()
+            self.draw_wave()
+        self._bg(work, on_done=done, what=t("asr_t"))
+
+    def _timing_key(self):
+        return tuple((round(c["start"], 3), round(c["end"], 3)) for c in self.clips)
+
+    def _remap_captions(self):
+        """Erkannte Texte folgen geaenderten Clipgrenzen; Handkorrekturen bleiben.
+        Generated text follows changed clip edges; manual edits are kept."""
+        if self.transcript is None or not self.clips:
+            return
+        key = self._timing_key()
+        if key == self._remap_key:
+            return
+        self._remap_key = key
+        asr.apply_captions(self.clips, asr.map_captions(self.transcript, self.clips),
+                           remap=True)
+
     def clear_captions(self):
         if not any(c.get("caption") for c in self.clips):
             return
         self._snapshot()
         for c in self.clips:
             c["caption"] = ""
+            c["_manual_caption"] = True      # nicht wieder auffuellen / keep empty
+            c.pop("_generated_caption", None)
         self.refresh_list()
         self.draw_wave()
 
@@ -3557,7 +3712,8 @@ class App(tk.Tk):
         tracks = [dict(tr) for tr in self.tracks]
         opts = {"dub": dub, "author": self.author.get().strip(),
                 "vheight": int(self.vheight.get()),
-                "has_video": self.video_has_stream}
+                "has_video": self.video_has_stream,
+                "transcript": self.transcript}
         self._build_then = then
         self.built_path = None
         self._bg(lambda: self._do_build(name, clips, tracks, opts),
@@ -3575,6 +3731,7 @@ class App(tk.Tk):
         os.makedirs(dest)
         dub = opts["dub"]
         src_audio = self.vocals_path or self.audio_path
+        transcript = opts.get("transcript")
         author = opts["author"]
         try:
             lines = [t("ts_head", name)]
@@ -3599,6 +3756,10 @@ class App(tk.Tk):
             if captions:
                 pc.write_captions(dest, captions)
                 self._log("  %s (%d)" % (pc.CAPTION_FILE, len(captions)))
+            if dub and transcript is not None:
+                outs = asr.subtitle_outputs(transcript)
+                asr.write_outputs(dest, outs)
+                self._log("  " + ", ".join(sorted(outs)))
 
             if dub and self.backing_path and os.path.isfile(self.backing_path):
                 self._phase(t("st_backing"), 48, 55)
@@ -3799,6 +3960,9 @@ class App(tk.Tk):
     def _save_cfg(self):
         self.cfg.update({
             "lang": LANG,
+            "asr_language": self.asr_language.get().strip().lower(),
+            "asr_model": self.asr_model.get(),
+            "asr_device": self.asr_device.get(),
             "src_mode": self.src_mode.get(),
             "last_url": self.url_var.get(),
             "t_start": self.t_start.get(),
@@ -3878,6 +4042,7 @@ class App(tk.Tk):
 
 
 def _main():
+    appwin.set_app_id("DubForge")
     try:
         app = App()
     except Exception:

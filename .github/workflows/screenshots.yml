@@ -1,0 +1,90 @@
+# Erzeugt die Bilder in docs/ mit den echten Programmen unter Windows und
+# legt sie als Commit auf den Branch, von dem aus der Lauf gestartet wurde.
+# Bildmaterial: "Tears of Steel" (CC-BY 3.0) Blender Foundation | mango.blender.org
+name: Screenshots
+
+on:
+  # Laeuft von selbst, wenn sich das Skript aendert - workflow_dispatch geht
+  # erst, wenn diese Datei auf dem Standard-Branch liegt.
+  push:
+    paths: ["dev/screenshots.py", ".github/workflows/screenshots.yml"]
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Start of the scene (e.g. 0:20)"
+        default: "0:20"
+      end:
+        description: "End of the scene (e.g. 0:46)"
+        default: "0:46"
+
+permissions:
+  contents: write
+
+jobs:
+  screenshots:
+    # Nur im Original-Repo - der Fork baut keinen Setup.exe.
+    # Upstream only - the DisDubs fork ships no Setup.exe.
+    if: github.repository == 'xmrius/dubstage'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Screen resolution
+        shell: pwsh
+        run: |
+          try { Set-DisplayResolution -Width 1920 -Height 1080 -Force } catch { Write-Host "Set-DisplayResolution: $_" }
+          Add-Type -AssemblyName System.Windows.Forms
+          [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+
+      - name: Python runtime
+        shell: pwsh
+        run: |
+          ./installer/build.ps1 -SkipCompile
+          build\runtime\python.exe -m pip install --disable-pip-version-check --progress-bar off -r requirements-transcription.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: ffmpeg
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "ffmpeg.zip"
+          Invoke-WebRequest -UseBasicParsing -OutFile $zip -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          $x = Join-Path $env:RUNNER_TEMP "ffmpeg_x"
+          Expand-Archive $zip -DestinationPath $x -Force
+          New-Item -ItemType Directory -Force tools | Out-Null
+          Get-ChildItem $x -Recurse -Filter *.exe | Copy-Item -Destination tools -Force
+
+      - name: Video
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP "tos.mov"
+          $urls = @(
+            "https://download.blender.org/demo/movies/ToS/tears_of_steel_720p.mov",
+            "https://ftp.nluug.nl/pub/graphics/blender/demo/movies/ToS/tears_of_steel_720p.mov"
+          )
+          foreach ($u in $urls) {
+            try { Invoke-WebRequest -UseBasicParsing -Uri $u -OutFile $out; break } catch { Write-Host "$u : $_" }
+          }
+          if (-not (Test-Path $out)) { throw "no video" }
+          tools\ffprobe.exe -v error -show_entries format=duration -of csv=p=0 $out
+
+      - name: Screenshots
+        shell: pwsh
+        run: |
+          build\runtime\python.exe dev\screenshots.py --video "$env:RUNNER_TEMP\tos.mov" --start "${{ inputs.start || '0:20' }}" --end "${{ inputs.end || '0:46' }}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: docs/*.png
+
+      - name: Commit
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/*.png
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { Write-Host "no changes"; exit 0 }
+          git commit -m "docs: update screenshots"
+          git push

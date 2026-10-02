@@ -1,0 +1,6 @@
+# Grundausstattung fuer DubForge und DubStage / base packages.
+# Setup.bat und Setup.exe installieren genau diese Liste.
+numpy
+yt-dlp
+pillow
+sounddevice

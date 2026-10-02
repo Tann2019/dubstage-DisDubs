@@ -74,7 +74,7 @@ echo.
 rem ---------------------------------------------------------- Pakete
 call :say "[2/4] Python-Pakete installieren (numpy, yt-dlp, pillow, sounddevice) ..." "[2/4] Installing the Python packages (numpy, yt-dlp, pillow, sounddevice) ..."
 %PY% -m pip install --upgrade pip --quiet
-%PY% -m pip install --upgrade numpy yt-dlp pillow sounddevice || (
+%PY% -m pip install --upgrade -r requirements.txt || (
   call :say "[!] Installation fehlgeschlagen. Internet pruefen." "[!] Installation failed. Check the internet connection."
   pause & exit /b 1
 )
@@ -88,12 +88,29 @@ call :ask "       Jetzt installieren? [J/N] " "       Install it now? [Y/N] "
 if errorlevel 3 (
   call :say "      uebersprungen - die Werkzeuge laufen dann ohne Stimmen-Trennung." "      skipped - the tools then work without vocal separation."
 ) else (
-  %PY% -m pip install --upgrade demucs soundfile
+  %PY% -m pip install --upgrade -r requirements-demucs.txt
   if errorlevel 1 (
     call :say "[!] Demucs konnte nicht installiert werden." "[!] Demucs could not be installed."
     call :say "    Die Werkzeuge funktionieren trotzdem, nur ohne Vocal-Trennung." "    The tools work anyway, just without vocal separation."
   ) else (
     call :say "      ok" "      ok"
+  )
+)
+echo.
+
+rem ---------------------------------------------------------- Spracherkennung
+echo [Optional] Automatische Untertitel / automatic captions ^(faster-whisper^) ...
+echo       Audio bleibt lokal. Das Modell wird bei erster Nutzung heruntergeladen.
+echo       Audio stays local. First use downloads the selected model.
+echo       large-v3 braucht mehrere GB Speicherplatz; CPU-Verarbeitung kann dauern.
+choice /c JN /n /m "       Spracherkennung installieren? / Install speech recognition? [J/N] "
+if errorlevel 2 (
+  echo       Uebersprungen - manuelle Untertitel funktionieren weiterhin.
+) else (
+  %PY% -m pip install -r requirements-transcription.txt
+  if errorlevel 1 (
+    echo [!] Spracherkennung konnte nicht installiert werden.
+    echo     Manuelle Untertitel funktionieren weiterhin.
   )
 )
 echo.

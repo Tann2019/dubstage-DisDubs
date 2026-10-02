@@ -104,6 +104,10 @@ class AppSmoke(unittest.TestCase):
     def setUpClass(cls):
         cls.m = load_app_module()
         cls.m.set_lang("en")
+        # Die echte Werkzeugpruefung liefe im Hintergrund und koennte den
+        # Zustand ueberschreiben, den ein Test gerade per _on_tools setzt.
+        # The real tool check would race the state a test sets via _on_tools.
+        cls.m.App._check_tools_async = lambda self: None
 
     def setUp(self):
         import numpy as np

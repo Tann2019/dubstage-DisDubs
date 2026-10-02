@@ -4,6 +4,12 @@ Dub scenes from video yourself. **DubForge** cuts a video into speakable clips, 
 
 *Deutsche Fassung: `LIESMICH.md`*
 
+<img src="docs/dubforge.png" alt="DubForge: waveform editor with detected clips and subtitles" width="900">
+
+<img src="docs/dubstage-record.png" alt="DubStage: recording a line, the take drawn live over the original" width="900">
+
+<sub>Footage: <i>Tears of Steel</i> — (CC) Blender Foundation | <a href="https://mango.blender.org">mango.blender.org</a>, CC BY 3.0.</sub>
+
 ---
 
 ## One-time setup
@@ -13,7 +19,7 @@ Dub scenes from video yourself. **DubForge** cuts a video into speakable clips, 
 
 There is no separate install step: the first start notices that nothing is set up yet and runs the setup for you, then opens the tool. Every start after that goes straight in. If you prefer to set up first, **`Setup.bat`** still does exactly that on its own.
 
-The setup installs the Python packages, downloads ffmpeg into a `tools` subfolder, offers shortcuts on the desktop, and asks whether to install Demucs for vocal separation. Demucs pulls in PyTorch, several hundred MB up to ~2 GB. If you say no, everything still works, just without a backing track.
+The setup installs the Python packages, downloads ffmpeg into a `tools` subfolder, offers shortcuts on the desktop, and asks whether to install Demucs for vocal separation. Demucs pulls in PyTorch, several hundred MB up to ~2 GB. If you say no, everything still works, just without a backing track. It also offers speech recognition for automatic captions (faster-whisper); you can add it later by running the setup again.
 
 ---
 
@@ -74,6 +80,41 @@ Every long job — download, vocal separation, video conversion — shows real p
 **If something goes wrong:** the log (**Log ▾** at the bottom, also written to `dubforge.log` next to the program) says which tool failed and why; YouTube errors are translated into plain language and, where it helps, offer to update yt-dlp. Missing tools are announced in a yellow row under the title with a pointer to Setup.bat.
 
 ## What ends up in the pack
+
+### Automatic captions
+
+Say yes to the optional speech recognition in `Setup.bat`, or run
+`py -m pip install -r requirements-transcription.txt`. After analysis, open
+**Subtitles ▾ → Recognise from the audio (Whisper)**, enter a spoken language
+code (`fr` French, `en` English, `de` German, `zh` Chinese; other Whisper codes
+are accepted), select a model, and click **Generate captions**. The text comes
+out in the spoken language - nothing is translated. The spoken language is
+remembered separately from the interface language.
+
+The default `large-v3` model prioritizes accuracy; `turbo` and `small` are faster
+alternatives. CPU/int8 works without a GPU. CUDA requires a compatible NVIDIA
+GPU with CUDA 12 cuBLAS and cuDNN 9, as described in the
+[faster-whisper guide](https://github.com/SYSTRAN/faster-whisper).
+The first use downloads a model (several GB for large-v3); audio stays local,
+and cached models work offline. CPU transcription may take several minutes or longer.
+
+Review generated captions in the existing subtitle field. Empty captions are
+filled by default; **Replace existing subtitles** regenerates existing text.
+Timing changes remap generated captions while preserving manual corrections.
+If recognition fails, existing captions remain available.
+
+Building a DubStage video pack also exports `dub_video.srt` and `dub_video.vtt`
+from the full original-audio transcript, including speech outside clips. Manual
+clip corrections affect `_captions.json`, not these full-scene subtitle files.
+Edit those separately if needed. There is no translation or burned-in video text.
+
+For an existing pack, run `py caption_pack.py packs/Test --language fr`.
+Optional flags are `--model large-v3|turbo|small`, `--device cpu|cuda`, and
+`--overwrite`. The command preserves nonempty clip captions unless overwrite
+is specified, backs up replaced outputs in `_caption_backup_*`, and leaves all
+media and timestamps untouched. It reports clips with no recognized speech.
+
+### Pack files
 
 | File | Purpose |
 |---|---|
@@ -152,17 +193,19 @@ Your `packs/`, `dubs/`, `tools/` and settings are never touched. Only the
 program files are replaced, and the previous ones are copied to a backup folder
 in `%TEMP%` beforehand, with a log of every step beside it.
 
-Apart from downloading a video you asked for, this is the only time either tool
-touches the network, and nothing is sent. To switch it off, set
+Network access also includes requested video downloads and the initial download
+of speech-recognition models. Audio is never uploaded. To switch update checks off, set
 `"check_updates": false` in `dubforge_settings.json` or `dubstage_settings.json`.
 
 ---
 
 ## When something goes wrong
 
+**SmartScreen warns about the setup** — It is not code-signed. Click *More info → Run anyway*.
+
 **Windows blocks the BAT files** — Right-click → Properties → tick **Unblock** at the bottom. Or in PowerShell inside the folder: `Get-ChildItem -Recurse | Unblock-File`. Important: move the files out of the downloads folder into a normal folder first.
 
-**"ffmpeg not found"** — Run Setup.bat again. If that fails: grab the **release full** build from `gyan.dev/ffmpeg/builds`, extract it, and put `ffmpeg.exe`, `ffprobe.exe` and `ffplay.exe` from `bin` into `tools\`.
+**"ffmpeg not found"** — Run the setup (or Setup.bat) again. If that fails: grab the **release full** build from `gyan.dev/ffmpeg/builds`, extract it, and put `ffmpeg.exe`, `ffprobe.exe` and `ffplay.exe` from `bin` into `tools\`.
 
 **A YouTube download fails** — Almost always an outdated yt-dlp. YouTube keeps changing how it serves video, so the tool only stays current for a few weeks. Click **Update yt-dlp** in the top right of DubForge; the version and its age are logged at startup. By hand: `py -m pip install --upgrade yt-dlp`.
 

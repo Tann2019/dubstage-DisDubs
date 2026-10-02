@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dubforge_core as pc
 import dubstage_core as ds
 import updater as upd
+import appwin
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CFG_PATH = os.path.join(APP_DIR, "dubstage_settings.json")
@@ -57,6 +58,7 @@ WAVE_ORIG = "#3c4470"          # Silhouette des Originals
 WAVE_ORIG_TXT = "#7079ad"
 
 TAIL = 0.7            # Nachlauf der Aufnahme / recording tail in seconds
+THUMB_W, THUMB_H = 112, 63    # Vorschaubild im Menue, 16:9
 
 
 # ==========================================================================
@@ -72,7 +74,7 @@ def set_lang(code):
 T = {
     "title":      ("DubStage", "DubStage"),
     "tagline":    ("Sprich die Szene selbst ein.", "Dub the scene yourself."),
-    "pick":       ("Waehle einen Dub-Pack", "Choose a dub pack"),
+    "pick":       ("Wähle einen Dub-Pack", "Choose a dub pack"),
     "no_packs":   ("Kein Dub-Pack gefunden.",
                    "No dub pack found."),
     "no_packs_2": ("Ein Dub-Pack braucht ein dub_video (mp4 oder ogv) und "
@@ -85,24 +87,25 @@ T = {
     "with_back":  ("mit Backing", "with backing"),
     "no_back":    ("ohne Backing", "no backing"),
     "rescan":     ("Neu suchen", "Rescan"),
-    "add_folder": ("Ordner hinzufuegen", "Add folder"),
+    "add_folder": ("Ordner hinzufügen", "Add folder"),
     "mic":        ("Mikrofon", "Microphone"),
     "mic_test":   ("Testen", "Test"),
     "mic_run":    ("Sprich jetzt ...", "Speak now ..."),
     "mic_ok":     ("Pegel %.0f dB - passt", "Level %.0f dB - good"),
     "mic_low":    ("Pegel %.0f dB - zu leise", "Level %.0f dB - too quiet"),
-    "mic_none":   ("Nichts angekommen - anderes Geraet waehlen",
+    "mic_none":   ("Nichts angekommen - anderes Gerät wählen",
                    "Nothing arrived - pick another device"),
     "start":      ("Loslegen", "Start"),
     "loading":    ("Pack wird vorbereitet ...", "Preparing the pack ..."),
     "no_sd":      ("Mikrofon nicht nutzbar: Paket 'sounddevice' fehlt. "
-                   "Bitte Setup.bat ausfuehren.",
+                   "Bitte das Setup erneut ausführen.",
                    "Microphone unavailable: package 'sounddevice' missing. "
-                   "Please run Setup.bat."),
-    "no_pil":     ("Videoanzeige braucht 'Pillow'. Bitte Setup.bat ausfuehren.",
-                   "Video display needs 'Pillow'. Please run Setup.bat."),
+                   "Please run the setup again."),
+    "no_pil":     ("Videoanzeige braucht 'Pillow'. Bitte das Setup erneut "
+                   "ausführen.",
+                   "Video display needs 'Pillow'. Please run the setup again."),
 
-    "menu":       ("Menue", "Menu"),
+    "menu":       ("Menü", "Menu"),
     "line_of":    ("Zeile %d / %d", "Line %d / %d"),
     "play_orig":  ("Original", "Original"),
     "rec":        ("Aufnehmen", "Record"),
@@ -110,12 +113,12 @@ T = {
     "play_take":  ("Meine Aufnahme", "My take"),
     "stop":       ("Stopp", "Stop"),
     "skip":       ("Zeile leer lassen", "Leave line empty"),
-    "prev":       ("Zurueck", "Back"),
+    "prev":       ("Zurück", "Back"),
     "next":       ("Weiter", "Next"),
     "finish":     ("Fertig", "Done"),
     "recording":  ("AUFNAHME", "RECORDING"),
     "go":         ("LOS", "GO"),
-    "hint":       ("Original anhoeren, dann aufnehmen. Beliebig oft.",
+    "hint":       ("Original anhören, dann aufnehmen. Beliebig oft.",
                    "Listen to the original, then record. As often as you like."),
     "no_take":    ("noch nichts aufgenommen", "nothing recorded yet"),
     "take_len":   ("Aufnahme %.1f s", "Take %.1f s"),
@@ -127,10 +130,10 @@ T = {
     "finale":     ("Deine Szene", "Your scene"),
     "play_all":   ("Abspielen", "Play"),
     "save":       ("Als Video speichern", "Save as video"),
-    "back_edit":  ("Zurueck zu den Zeilen", "Back to the lines"),
+    "back_edit":  ("Zurück zu den Zeilen", "Back to the lines"),
     "saving":     ("Video wird geschrieben ...", "Writing the video ..."),
     "saved":      ("Gespeichert:\n%s", "Saved:\n%s"),
-    "leave_q":    ("Zurueck zum Menue? Die Aufnahmen gehen verloren.",
+    "leave_q":    ("Zurück zum Menü? Die Aufnahmen gehen verloren.",
                    "Back to the menu? The takes will be lost."),
     "err":        ("Fehler", "Error"),
     "quiet_hint": ("sehr leise - lauter sprechen", "very quiet - speak up"),
@@ -141,14 +144,14 @@ T = {
     "upd_more":   ("Was ist neu", "What's new"),
     "upd_less":   ("Zuklappen", "Collapse"),
     "upd_now":    ("Aktualisieren", "Update"),
-    "upd_later":  ("Spaeter", "Later"),
+    "upd_later":  ("Später", "Later"),
     "upd_nonotes": ("Zu dieser Version wurde kein Text hinterlegt.",
                     "No description was published for this version."),
     "upd_ask_t":  ("Update einspielen?", "Install update?"),
     "upd_ask":    ("DubForge und DubStage werden auf %s aktualisiert.\n\n"
-                   "Die App schliesst sich, die Dateien werden getauscht "
+                   "Die App schließt sich, die Dateien werden getauscht "
                    "und die App startet neu.\n"
-                   "Packs, Aufnahmen und Einstellungen bleiben unberuehrt.\n\n"
+                   "Packs, Aufnahmen und Einstellungen bleiben unberührt.\n\n"
                    "Fortfahren?",
                    "DubForge and DubStage will be updated to %s.\n\n"
                    "The app closes, the files are replaced and the app "
@@ -156,7 +159,7 @@ T = {
                    "Packs, recordings and settings are left untouched.\n\n"
                    "Continue?"),
     "upd_dl":     ("Lade ... %d%%", "Downloading ... %d%%"),
-    "upd_check":  ("Pruefe das Archiv ...", "Checking the archive ..."),
+    "upd_check":  ("Prüfe das Archiv ...", "Checking the archive ..."),
     "upd_swap":   ("Tausche Dateien - gleich geht es weiter ...",
                    "Replacing files - back in a moment ..."),
     "upd_fail_t": ("Update fehlgeschlagen", "Update failed"),
@@ -276,6 +279,7 @@ class Game(tk.Tk):
 
     def __init__(self):
         super().__init__()
+        appwin.set_icon(self, "DubStage")
         self.cfg = load_cfg()
         set_lang(self.cfg.get("lang") or pc.system_lang())
         self.title(t("title"))
@@ -310,6 +314,11 @@ class Game(tk.Tk):
         self._embedded = []
         self.buttons = []
         self.chips = []
+        self._thumbs = {}             # Vorschaubilder im Menue / menu thumbnails
+        self._thumb_jobs = set()
+        self._thumb_redraw = False
+        self._logo_img = None
+        self._loading = False
 
         self.upd_info = None          # gefundenes Release / found release
         self.upd_open = False         # Changelog aufgeklappt?
@@ -483,10 +492,17 @@ class Game(tk.Tk):
         w, h = self.size()
         cv = self.cv
 
-        cv.create_text(w / 2, 62, text="DUBSTAGE", fill=TXT,
-                       font=("Segoe UI Black", 40))
-        cv.create_rectangle(w / 2 - 90, 92, w / 2 + 90, 95, fill=ACC, width=0)
-        cv.create_text(w / 2, 116, text=t("tagline"), fill=DIM,
+        # Kopf: Symbol und Name als Gruppe mittig, darunter die Zeile.
+        title = cv.create_text(0, 64, text="DubStage", fill=TXT, anchor="w",
+                               font=("Segoe UI Black", 34))
+        box = cv.bbox(title) or (0, 0, 220, 0)
+        logo = self._logo()
+        lw = 54 if logo else 0
+        x0 = (w - (lw + (box[2] - box[0]))) / 2
+        if logo:
+            cv.create_image(x0, 64, image=logo, anchor="w")
+        cv.coords(title, x0 + lw, 64)
+        cv.create_text(w / 2, 112, text=t("tagline"), fill=DIM,
                        font=("Segoe UI", 12))
 
         # Sprachumschalter
@@ -508,7 +524,7 @@ class Game(tk.Tk):
 
         # ---- Pack-Karten
         list_x0, list_x1 = 70, w - 70
-        card_h, gap = 74, 12
+        card_h, gap = 86, 12
         top = 196 + off
         avail = h - top - 210
         per_page = max(1, int(avail // (card_h + gap)))
@@ -532,14 +548,25 @@ class Game(tk.Tk):
             round_rect(cv, list_x0, y, list_x1, y + card_h, r=16,
                        fill=PANEL_HI if sel else PANEL,
                        outline=ACC if sel else EDGE)
-            cv.create_text(list_x0 + 26, y + 26, anchor="w", text=p.name,
+            thumb = self._thumb(p, PANEL_HI if sel else PANEL)
+            tx = list_x0 + 12
+            if thumb:
+                cv.create_image(tx, y + card_h / 2, image=thumb, anchor="w")
+            else:
+                round_rect(cv, tx, y + (card_h - THUMB_H) / 2, tx + THUMB_W,
+                           y + (card_h + THUMB_H) / 2, r=10, fill=BG_BOT,
+                           outline="")
+                cv.create_text(tx + THUMB_W / 2, y + card_h / 2, text="▶",
+                               fill=EDGE, font=("Segoe UI", 16))
+            text_x = tx + THUMB_W + 18
+            cv.create_text(text_x, y + 32, anchor="w", text=p.name,
                            fill=TXT if sel else "#c9cfe8",
                            font=("Segoe UI Semibold", 14))
-            dur = pc.probe_duration(p.video)
-            meta = "%s   -   %s   -   %s" % (
+            dur = ds.pack_duration(p)
+            meta = "%s   ·   %s   ·   %s" % (
                 t("lines_n", len(p.lines)), pc.fmt_time(dur)[:-4],
                 t("with_back") if p.backing else t("no_back"))
-            cv.create_text(list_x0 + 26, y + 50, anchor="w", text=meta,
+            cv.create_text(text_x, y + 57, anchor="w", text=meta,
                            fill=DIM, font=("Segoe UI", 10))
             if sel:
                 cv.create_text(list_x1 - 26, y + card_h / 2, anchor="e",
@@ -561,21 +588,25 @@ class Game(tk.Tk):
         if self.mic.available:
             devs = self.mic.devices()
             names = ["%d  %s" % (i, n) for i, n in devs]
+            # Beim Neuzeichnen (Fenstergroesse, Vorschaubilder) die gerade
+            # gewaehlte Quelle behalten, nicht auf die gespeicherte springen.
+            old = getattr(self, "mic_var", None)
+            keep = old.get() if old is not None else self.cfg.get("mic")
             self.mic_var = tk.StringVar(
-                value=self.cfg.get("mic") if self.cfg.get("mic") in names
+                value=keep if keep in names
                 else (names[0] if names else ""))
             box = ttk.Combobox(self, textvariable=self.mic_var, width=44,
                                state="readonly", values=names,
                                style="Mic.TCombobox")
             self._embedded.append(box)
-            cv.create_window(180, my + 33, window=box, anchor="w")
+            cv.create_window(200, my + 33, window=box, anchor="w")
             self._btn(w - 250, my + 17, 100, 32, t("mic_test"),
                       self.test_mic, "ghost")
             self.mic_msg = cv.create_text(w - 270, my + 33, anchor="e",
                                           text="", fill=DIM,
                                           font=("Segoe UI", 10))
         else:
-            cv.create_text(180, my + 33, anchor="w", text=t("no_sd"),
+            cv.create_text(200, my + 33, anchor="w", text=t("no_sd"),
                            fill=RED, font=("Segoe UI", 10))
             self.mic_msg = None
 
@@ -740,7 +771,64 @@ class Game(tk.Tk):
 
     def scan_packs(self):
         self._scanned = False
+        self._thumbs = {}
+        self._thumb_jobs = set()
         self.show_menu()
+
+    # ------------------------------------------------------ Bilder im Menue
+    def _logo(self):
+        if self._logo_img is None:
+            self._logo_img = False
+            if HAVE_PIL:
+                try:
+                    im = Image.open(os.path.join(APP_DIR, "assets",
+                                                 "dubstage.png"))
+                    im = im.convert("RGBA").resize((44, 44), Image.LANCZOS)
+                    self._logo_img = ImageTk.PhotoImage(im)
+                except Exception:
+                    pass
+        return self._logo_img or None
+
+    def _thumb(self, pack, bg):
+        """Vorschaubild mit runden Ecken auf der Kartenfarbe, oder None."""
+        if not HAVE_PIL:
+            return None
+        key = (pack.folder, bg)
+        if key in self._thumbs:
+            return self._thumbs[key]
+        path = ds.thumb_path(pack)
+        fresh = False
+        try:
+            fresh = os.path.getmtime(path) >= os.path.getmtime(pack.video)
+        except OSError:
+            pass
+        if not fresh:
+            # Erzeugen dauert einen Moment - im Hintergrund, dann neu zeichnen.
+            if pack.folder not in self._thumb_jobs:
+                self._thumb_jobs.add(pack.folder)
+
+                def work(p=pack):
+                    ds.make_thumb(p)
+                    self.msgq.put(("thumb", None))
+                threading.Thread(target=work, daemon=True).start()
+            return None
+        try:
+            from PIL import ImageDraw, ImageOps
+            im = ImageOps.fit(Image.open(path).convert("RGB"),
+                              (THUMB_W, THUMB_H), Image.LANCZOS)
+            k = 4                                  # Kanten glaetten
+            mask = Image.new("L", (THUMB_W * k, THUMB_H * k), 0)
+            ImageDraw.Draw(mask).rounded_rectangle(
+                (0, 0, THUMB_W * k - 1, THUMB_H * k - 1), radius=10 * k,
+                fill=255)
+            mask = mask.resize((THUMB_W, THUMB_H), Image.LANCZOS)
+            out = Image.new("RGB", (THUMB_W, THUMB_H), bg)
+            out.paste(im, (0, 0), mask)
+            photo = ImageTk.PhotoImage(out)
+        except Exception:
+            photo = None
+        self._thumbs[key] = photo
+        return photo
 
     def add_folder(self):
         d = filedialog.askdirectory(title=t("add_folder"))
@@ -810,6 +898,7 @@ class Game(tk.Tk):
         self.cv.itemconfigure(self.status_item, text=t("loading"), fill=GOLD)
         for b in self.buttons:
             b.set_enabled(False)
+        self._loading = True          # kein Neuzeichnen des Menues dazwischen
         self.update_idletasks()
 
         fps = int(self.cfg.get("video_fps") or ds.FRAME_FPS)
@@ -819,6 +908,7 @@ class Game(tk.Tk):
             ds.extract_frames(self.pack, fps=max(8, min(30, fps)))
 
         def done():
+            self._loading = False
             for l in self.pack.lines:
                 l.take = None
             self.line_i = 0
@@ -1229,12 +1319,41 @@ class Game(tk.Tk):
                 traceback.print_exc()
 
     def _overlay(self, text=None, colour=GOLD, size=68):
-        state = "hidden" if text is None else "normal"
-        self.cv.itemconfigure(self.overlay_rect, state=state)
-        self.cv.itemconfigure(self.overlay_text, state=state)
-        if text is not None:
-            self.cv.itemconfigure(self.overlay_text, text=text, fill=colour,
-                                  font=("Segoe UI Black", size))
+        """
+        Einblendung ueber dem Video. Grosse Schrift (Countdown) als Plakette
+        in der Mitte; kleine (Aufnahme laeuft) als "REC"-Pille oben links -
+        die Mitte des Bildes muss frei bleiben, man spricht ja lippensynchron.
+        """
+        cv = self.cv
+        cv.delete("overlay")
+        for item in (self.overlay_rect, self.overlay_text):
+            cv.itemconfigure(item, state="hidden")
+        if text is None:
+            return
+        vx, vy, vw, vh = self.video_box
+        if size >= 40:
+            tid = cv.create_text(vx + vw / 2, vy + vh / 2, text=text,
+                                 fill=colour, font=("Segoe UI Black", size),
+                                 tags="overlay")
+            x0, y0, x1, y1 = cv.bbox(tid)
+            side = max(x1 - x0, y1 - y0) + 44
+            cx, cy = vx + vw / 2, vy + vh / 2
+            badge = round_rect(cv, cx - side / 2, cy - side / 2,
+                               cx + side / 2, cy + side / 2, r=28,
+                               fill="#0b0d16", outline=colour, width=2,
+                               tags="overlay")
+        else:
+            tid = cv.create_text(vx + 38, vy + 30, anchor="w",
+                                 text=text.upper(), fill=colour,
+                                 font=("Segoe UI Semibold", 11),
+                                 tags="overlay")
+            x0, y0, x1, y1 = cv.bbox(tid)
+            badge = round_rect(cv, vx + 14, vy + 14, x1 + 14, vy + 46, r=16,
+                               fill="#0b0d16", outline="", tags="overlay")
+            dot = cv.create_oval(vx + 24, vy + 25, vx + 32, vy + 33,
+                                 fill=colour, outline="", tags="overlay")
+            cv.tag_raise(dot, badge)
+        cv.tag_raise(tid, badge)
 
     # -------------------------------------------------- Wiedergabe-Schleife
     def _play_from(self, start, duration, on_end=None):
@@ -1477,10 +1596,18 @@ class Game(tk.Tk):
     #  FINALE
     # ==================================================================
     def build_finale(self):
-        self.screen = "finale"
         self._set_phase("idle")
         self._stop_audio()
-        self.mix = ds.render_dub(self.pack)
+        try:
+            mix = ds.render_dub(self.pack)
+        except Exception as ex:
+            # z.B. Video ohne Tonspur und kein Backing Track - dann auf der
+            # Buehne bleiben, statt mit halb gezeichnetem Finale zu haengen.
+            traceback.print_exc()
+            messagebox.showerror(t("err"), str(ex))
+            return
+        self.screen = "finale"
+        self.mix = mix
         self._clear_canvas()
         self._backdrop()
         cv = self.cv
@@ -1613,17 +1740,30 @@ class Game(tk.Tk):
             self.b_save.set_enabled(True)
             self.cv.itemconfigure(self.fin_msg, text="", fill=DIM)
             messagebox.showinfo(t("title"), t("saved", path))
-        self._run_bg(work, done)
+
+        def failed(msg):
+            # Im Finale bleiben: zurueck ins Menue hiesse, alle Aufnahmen
+            # dieser Runde zu verlieren - nur weil z.B. die Datei gesperrt war.
+            if self.screen == "finale":
+                self.b_save.set_enabled(True)
+                self.cv.itemconfigure(self.fin_msg, text="", fill=DIM)
+            messagebox.showerror(t("err"), msg)
+        self._run_bg(work, done, on_error=failed)
 
     # ------------------------------------------------------- Hintergrund
-    def _run_bg(self, fn, on_done):
+    def _run_bg(self, fn, on_done, on_error=None):
         def wrapper():
             try:
                 fn()
                 self.msgq.put(("done", on_done))
             except Exception as ex:
                 traceback.print_exc()
-                self.msgq.put(("error", str(ex)))
+                if on_error is not None:
+                    # ex verschwindet am Ende des except-Blocks - Text binden.
+                    msg = str(ex)
+                    self.msgq.put(("done", lambda: on_error(msg)))
+                else:
+                    self.msgq.put(("error", str(ex)))
         threading.Thread(target=wrapper, daemon=True).start()
 
     def _pump(self):
@@ -1633,8 +1773,14 @@ class Game(tk.Tk):
                 if kind == "done":
                     payload()
                 elif kind == "error":
+                    self._loading = False
                     messagebox.showerror(t("err"), payload)
                     self.show_menu()
+                elif kind == "thumb":
+                    # Mehrere Bilder kurz nacheinander: nur einmal neu zeichnen.
+                    if not self._thumb_redraw:
+                        self._thumb_redraw = True
+                        self.after(150, self._redraw_thumbs)
                 elif kind == "update":
                     upd.note_checked(self.cfg)
                     self.cfg["upd_cache"] = payload
@@ -1662,6 +1808,11 @@ class Game(tk.Tk):
             self._force_idle()
         self.after(60, self._pump)
 
+    def _redraw_thumbs(self):
+        self._thumb_redraw = False
+        if self.screen == "menu" and not self._busy and not self._loading:
+            self.show_menu()
+
     def _on_close(self):
         # Siehe DubForge: beim Update haengt ein Skript am Prozessende.
         for step in (self._stop_audio, lambda: save_cfg(self.cfg)):
@@ -1673,4 +1824,5 @@ class Game(tk.Tk):
 
 
 if __name__ == "__main__":
+    appwin.set_app_id("DubStage")
     Game().mainloop()
