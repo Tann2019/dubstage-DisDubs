@@ -116,9 +116,11 @@ _MSG = {
     # DisDubs-Vorabpruefung / DisDubs pre-flight
     "dd_one_part": (
         "DisDubs wird alles als EINE Rolle besetzen: %d Sprecher bei %d Clips. "
-        "Die Regel dort: hoechstens halb so viele Sprecher wie Clips.",
+        "Die Regel dort: hoechstens halb so viele Sprecher wie Clips, und ab "
+        "elf Sprechern im Schnitt vier Clips je Sprecher.",
         "DisDubs will cast everything as ONE part: %d speakers over %d clips. "
-        "Its rule: at most half as many speakers as clips."),
+        "Its rule: at most half as many speakers as clips, and from eleven "
+        "speakers on an average of four clips each."),
     "dd_long_name": (
         "Sprechername laenger als 40 Zeichen - DisDubs ignoriert dann alle "
         "Namen: %s",
@@ -1674,7 +1676,8 @@ def sweep_temp(prefix="dubforge_", max_age_h=24):
 # --------------------------------------------------------------------------
 
 DISDUBS_MAX_NAME = 40          # speakersFrom: laengere Labels -> keine Namen
-DISDUBS_MAX_SPEAKERS = 10
+DISDUBS_MAX_SPEAKERS = 10      # bis hierhin entscheidet nur die Haelfte-Regel
+DISDUBS_LINES_PAST_MAX = 4     # darueber: so viele Clips je Name im Schnitt
 DISDUBS_SHORT_PACK = 8         # bis hierhin zaehlt nur, dass sich etwas wiederholt
 DISDUBS_FREE_SECONDS = 180
 DISDUBS_TRAILING_S = 1.0       # so kurze Ueberschneidungen kuerzt DisDubs
@@ -1742,26 +1745,45 @@ def disdubs_check(tracks, clips, duration=0.0, dub=True, has_backing=True,
     return warns
 
 
+def disdubs_label(name):
+    """Der Name, wie DisDubs ihn aus dem Dateinamen liest und vergleicht:
+    Gross/klein und Leerraum zaehlen nicht (foldCase drueben).
+    The name as DisDubs reads it from the file name and compares it: case
+    and whitespace do not count (foldCase over there)."""
+    return re.sub(r"[\s_]+", " ", safe_name(name, "clip")).strip().lower()
+
+
 def disdubs_parts(tracks, clips):
     """Wie viele Rollen DisDubs daraus machen wuerde / how many parts.
 
-    Dieselbe Regel wie speakersFrom() drueben: mehr als zehn Namen sind
-    kein Ensemble mehr, ein kurzer Pack muss nur irgendetwas wiederholen,
-    und erst ab da zaehlt "hoechstens halb so viele Sprecher wie Clips".
+    Dieselbe Regel wie speakersFrom() drueben (DiscordDubs/scripts/lib/
+    dubstage.mjs): Namen ueber 40 Zeichen machen alles zu einer Rolle; Namen,
+    die sich nur in Gross/Klein unterscheiden, sind eine Rolle. Bis zehn
+    Namen entscheidet "hoechstens halb so viele Sprecher wie Clips" - ein
+    kurzer Pack muss nur irgendetwas wiederholen. Ab elf Namen braucht es
+    zusaetzlich im Schnitt vier Clips je Name.
 
-    The same rule as speakersFrom() over there: more than ten names is no
-    longer a cast, a short pack only has to repeat something, and only
-    beyond that does "at most half as many speakers as clips" apply.
+    The same rule as speakersFrom() over there: a name over 40 characters
+    makes it one part; names differing only in case are one part. Up to ten
+    names "at most half as many speakers as clips" decides (a short pack only
+    has to repeat something); past ten, names also need four clips on average.
     """
     if not clips:
         return 0
-    used = sorted({int(c.get("track", 0)) for c in clips})
-    n = len(used)
-    if n > DISDUBS_MAX_SPEAKERS:
+    labels = []
+    for c in clips:
+        i = int(c.get("track", 0))
+        name = str(tracks[i].get("name") or "") if 0 <= i < len(tracks) else ""
+        if len(safe_name(name, "clip")) > DISDUBS_MAX_NAME:
+            return 1
+        labels.append(disdubs_label(name))
+    n = len(set(labels))
+    total = len(labels)
+    if n > DISDUBS_MAX_SPEAKERS and n * DISDUBS_LINES_PAST_MAX > total:
         return 1
-    if len(clips) <= DISDUBS_SHORT_PACK:
-        return n if n < len(clips) else 1
-    if n * 2 > len(clips):
+    if total <= DISDUBS_SHORT_PACK:
+        return n if n < total else 1
+    if n * 2 > total:
         return 1
     return n
 

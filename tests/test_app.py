@@ -131,6 +131,25 @@ class AppSmoke(unittest.TestCase):
         self.app.dirty = False
         self.app.destroy()
 
+    def test_no_limit_on_tracks(self):
+        # Frueher war bei acht Spuren Schluss / there used to be a cap at 8
+        app = self.app
+        for i in range(2, 26):
+            self.assertIsNotNone(app.add_track("Role%d" % i))
+        self.assertEqual(len(app.tracks), 25)
+        self.assertEqual(len(app.track_box.cget("values")), 25)
+        app.selected = 0
+        app.track_var.set("Role25")
+        app._insp_track_changed()
+        self.assertEqual(app.clips[0]["track"], 24)
+        # Die Spuren werden flacher, die Zeitleiste bleibt handlich.
+        # Lanes get flatter so the timeline stays manageable.
+        app.draw_wave(); app.update()
+        self.assertLess(self.m.LANE_H, self.m.px(self.m.LANE_FULL))
+        lane = app._lane_at(app._lane_top(24) + 2)
+        self.assertEqual(lane, 24)
+        self.assertEqual(len({tr["color"] for tr in app.tracks}), 24)
+
     def test_tracks_and_moves(self):
         app = self.app
         self.assertEqual(app.add_track("Otacon"), 1)
@@ -371,6 +390,30 @@ class FullRun(unittest.TestCase):
         while time.time() < end:
             self.app.update()
             time.sleep(0.03)
+
+    def test_reopen_keeps_every_track(self):
+        # Ein Pack mit zwoelf Sprechern: frueher landeten Spur 9 bis 12 beim
+        # Wiederoeffnen alle auf Spur 8. / tracks 9-12 used to fold into 8.
+        m = self.m
+        self.dlg = Dialogs().install(m)
+        app = self.app = m.App()
+        try:
+            folder = os.path.join(self.d, "twelve")
+            os.makedirs(folder, exist_ok=True)
+            shutil.copy(self.video, os.path.join(folder, "dub_video.mp4"))
+            tracks = [{"name": "Role%d" % i, "color": "#7c5cff"} for i in range(12)]
+            clips = [{"start": 0.5 * i, "end": 0.5 * i + 0.4, "track": i % 12,
+                      "caption": "line %d" % i} for i in range(24)]
+            pc.write_project(folder, {"tracks": tracks, "clips": clips,
+                                      "meta": {}})
+            app._do_open_pack(folder); app._after_open(); app.update()
+            self.assertEqual([tr["name"] for tr in app.tracks],
+                             ["Role%d" % i for i in range(12)])
+            self.assertEqual(sorted({c["track"] for c in app.clips}),
+                             list(range(12)))
+        finally:
+            app.dirty = False
+            app.destroy()
 
     def test_full_run(self):
         m = self.m

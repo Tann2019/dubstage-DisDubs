@@ -7,6 +7,27 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-10-03
+
+### Changed
+
+- **No more limit on speakers.** DubForge stopped at eight tracks; now there is
+  no cap, so a scene can have as many roles as it has speakers. The palette has
+  24 colours (the eight speaker hues plus a lighter and a deeper round) and
+  repeats after that; the names in the gutter keep tracks apart. With more than
+  eight tracks the lanes get flatter so the timeline stays usable.
+- **The DisDubs check follows DisDubs' current casting rule.** Past ten
+  speakers, a pack is a cast when the names average four clips each (a
+  296-clip scene with 28 speakers keeps all 28 parts). Names that differ only
+  in case count as one part, as DisDubs merges them, and a name over 40
+  characters makes the whole pack one part.
+
+### Fixed
+
+- **Reopening a pack with more than eight speakers merged them.** Every clip on
+  track nine or later landed on track eight; all tracks now come back as they
+  were saved.
+
 ## [1.6.1] - 2026-10-02
 
 ### Added
@@ -576,7 +597,8 @@ switchable at runtime.
   clip lengths it lands one sample short, which previously raised mid-playback
   and froze the interface.
 
-[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.6.2...HEAD
+[1.6.2]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/Tann2019/dubstage-DisDubs/compare/v1.4.2...v1.5.0

@@ -88,14 +88,14 @@ ACC, ACC2 = AMBER, LEADER
 # mit der Auswahl verwechselt.
 # Track colours - one per speaker: muted grease-pencil hues, none close
 # enough to amber to be mistaken for the selection.
-TRACK_COLORS = ["#6fa8dc", "#86c99a", "#e3879a", "#ab93e6",
-                "#5cc6c0", "#e8936b", "#d98ac8", "#9fb3c8"]
-# Farben aelterer Versionen -> gleiche Stelle in der neuen Palette.
-# Older versions' colours -> the same slot in the new palette.
-LEGACY_COLORS = dict(zip(["#7c5cff", "#43d69a", "#ff8a5c", "#5cc8ff",
-                          "#ffd166", "#ff6b9d", "#9be36a", "#c58cff"],
-                         TRACK_COLORS))
-MAX_TRACKS = len(TRACK_COLORS)
+# Die Zahl der Spuren ist nicht begrenzt: nach diesen Farben kommt eine
+# hellere und eine tiefere Runde derselben Toene (unten, nach _blend), danach
+# wiederholt sich die Reihe - die Namen in der Rinne bleiben eindeutig.
+# The number of tracks is unlimited: after these come a lighter and a deeper
+# round of the same hues (below, after _blend); past that the palette repeats
+# and the names in the gutter keep tracks apart.
+TRACK_BASE = ["#6fa8dc", "#86c99a", "#e3879a", "#ab93e6",
+              "#5cc6c0", "#e8936b", "#d98ac8", "#9fb3c8"]
 
 # Zeitleisten-Geometrie in Pixeln bei 100 %; _apply_scale rechnet sie auf
 # die Bildschirmskalierung um.
@@ -103,6 +103,8 @@ MAX_TRACKS = len(TRACK_COLORS)
 # display scaling.
 _BASE_GEOM = {"GUTTER": 136, "RULER_H": 22, "WAVE_H": 64, "LANE_H": 36,
               "ADD_H": 26, "EDGE_PX": 6}
+LANE_FULL = 36        # Spurhoehe bis acht Spuren / lane height up to eight
+LANE_MIN = 22         # so flach werden Spuren hoechstens / the flattest lane
 GUTTER = 136          # linke Spalte mit Spurnamen / left column with track names
 RULER_H = 22
 WAVE_H = 64
@@ -136,6 +138,20 @@ def _blend(a, b, f):
         x, y = int(a[i:i + 2], 16), int(b[i:i + 2], 16)
         out.append(int(round(x + (y - x) * f)))
     return "#%02x%02x%02x" % tuple(out)
+
+
+TRACK_COLORS = (TRACK_BASE + [_blend(c, INK, 0.38) for c in TRACK_BASE]
+                + [_blend(c, PAGE, 0.22) for c in TRACK_BASE])
+# Farben aelterer Versionen -> gleiche Stelle in der neuen Palette.
+# Older versions' colours -> the same slot in the new palette.
+LEGACY_COLORS = dict(zip(["#7c5cff", "#43d69a", "#ff8a5c", "#5cc8ff",
+                          "#ffd166", "#ff6b9d", "#9be36a", "#c58cff"],
+                         TRACK_BASE))
+
+
+def track_color(i):
+    """Farbe fuer die i-te Spur / colour for the i-th track."""
+    return TRACK_COLORS[i % len(TRACK_COLORS)]
 
 
 # Schriften: Bahnschrift ist die DIN der Klappen und Objektivringe - in
@@ -496,8 +512,6 @@ T = {
     "dlg_track_name": ("Name des Sprechers:", "Speaker name:"),
     "dlg_track_del": ("Spur '%s' mit %d Clips loeschen?",
                       "Delete track '%s' and its %d clips?"),
-    "dlg_track_max": ("Mehr als %d Spuren gibt es nicht.",
-                      "There is a limit of %d tracks."),
     "stats":        ("%d Clips, %d Spuren, %d ohne Untertitel, %s gesprochen",
                      "%d clips, %d tracks, %d without subtitle, %s spoken"),
     "overlap_note": ("%d Ueberschneidungen in derselben Spur",
@@ -2463,12 +2477,12 @@ class App(tk.Tk):
 
             tracks = []
             used = set()
-            for i, tr in enumerate(info["tracks"][:MAX_TRACKS]):
+            for i, tr in enumerate(info["tracks"]):
                 col = tr.get("color")
                 col = LEGACY_COLORS.get(str(col).lower(), col)
                 if col not in TRACK_COLORS or col in used:
                     free = [c for c in TRACK_COLORS if c not in used]
-                    col = free[0] if free else TRACK_COLORS[i % MAX_TRACKS]
+                    col = free[0] if free else track_color(i)
                 used.add(col)
                 tracks.append({"name": str(tr.get("name") or t("track_new", i + 1)),
                                "color": col})
@@ -2744,24 +2758,21 @@ class App(tk.Tk):
         if color not in TRACK_COLORS:
             color = None
         if color is None:
-            if idx is not None and TRACK_COLORS[idx % MAX_TRACKS] not in used:
-                color = TRACK_COLORS[idx % MAX_TRACKS]
+            if idx is not None and track_color(idx) not in used:
+                color = track_color(idx)
             else:
                 free = [c for c in TRACK_COLORS if c not in used]
-                color = free[0] if free else TRACK_COLORS[len(self.tracks) % MAX_TRACKS]
+                color = free[0] if free else track_color(len(self.tracks))
         return {"name": name, "color": color}
 
     def _track_tag(self, track_idx):
         col = self.tracks[track_idx]["color"] if 0 <= track_idx < len(self.tracks) \
             else TRACK_COLORS[0]
-        return "t%d" % TRACK_COLORS.index(col)
+        return "t%d" % (TRACK_COLORS.index(col) if col in TRACK_COLORS else 0)
 
     def add_track(self, name=None):
         if not self.tracks and not len(self.wave_data):
             messagebox.showinfo(t("dlg_first_t"), t("dlg_first"))
-            return None
-        if len(self.tracks) >= MAX_TRACKS:
-            messagebox.showinfo(t("dlg_track_t"), t("dlg_track_max", MAX_TRACKS))
             return None
         if name is None:
             name = simpledialog.askstring(
@@ -2791,9 +2802,10 @@ class App(tk.Tk):
 
     def recolor_track(self, i):
         used = {tr["color"] for tr in self.tracks}
-        cur = TRACK_COLORS.index(self.tracks[i]["color"])
-        for k in range(1, MAX_TRACKS + 1):
-            cand = TRACK_COLORS[(cur + k) % MAX_TRACKS]
+        cur = TRACK_COLORS.index(self.tracks[i]["color"]) \
+            if self.tracks[i]["color"] in TRACK_COLORS else -1
+        for k in range(1, len(TRACK_COLORS) + 1):
+            cand = track_color(cur + k)
             if cand not in used or cand == self.tracks[i]["color"]:
                 self._snapshot()
                 self.tracks[i]["color"] = cand
@@ -3482,7 +3494,16 @@ class App(tk.Tk):
             return i
         return None
 
+    def _fit_lanes(self):
+        """Viele Sprecher: Spuren flacher, damit die Zeitleiste nicht endlos
+        waechst. / Many speakers: flatter lanes so the timeline stays usable."""
+        global LANE_H
+        n = max(1, len(self.tracks))
+        base = LANE_FULL if n <= 8 else max(LANE_MIN, int(LANE_FULL * 8 / n))
+        LANE_H = px(base)
+
     def _canvas_height(self):
+        self._fit_lanes()
         return RULER_H + WAVE_H + max(1, len(self.tracks)) * LANE_H + ADD_H
 
     def draw_wave(self):
@@ -3597,7 +3618,8 @@ class App(tk.Tk):
             cv.create_rectangle(0, y0 + 1, px(4), y1, fill=col, outline="")
             cv.create_text(px(14), (y0 + y1) / 2, anchor="w", fill=INK,
                            text=self._ellipsize(tr["name"], 15),
-                           font=(SLATE_COND, 11), tags=("lane%d" % i,))
+                           font=(SLATE_COND, 11 if LANE_H >= px(30) else 9),
+                           tags=("lane%d" % i,))
             cv.create_line(0, y1, GUTTER, y1, fill=LINE_SOFT)
 
         # ---- Clips: Nummer und Text auf dem Streifen, wie ein Rhythmusband
@@ -3650,7 +3672,8 @@ class App(tk.Tk):
         if x1 - x0 > px(18):
             ink = "#101114"
             cv.create_text(x0 + px(8 if sel else 6), (y0 + y1) / 2, anchor="w",
-                           fill=ink, text="%d" % (i + 1), font=(SLATE, 10))
+                           fill=ink, text="%d" % (i + 1),
+                           font=(SLATE, 10 if LANE_H >= px(30) else 8))
             cap = c.get("caption", "")
             room = x1 - x0 - px(34)
             if cap and room > px(24):
@@ -4104,7 +4127,7 @@ class App(tk.Tk):
 
         # --- Vorabpruefung / pre-flight (DisDubs + DubStage)
         default_names = (t("track_default"), "Voice", "Stimme") + \
-            tuple(t("track_new", i) for i in range(1, MAX_TRACKS + 1))
+            tuple(t("track_new", i) for i in range(1, len(self.tracks) + 2))
         warns = pc.disdubs_check(
             self.tracks, self.clips, duration=self.duration, dub=dub,
             has_backing=bool(self.backing_path), has_video=self.video_has_stream,

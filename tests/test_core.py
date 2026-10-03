@@ -244,9 +244,29 @@ class DisDubsShortPacks(unittest.TestCase):
         cast = self.clips([0, 1, 2, 3, 4, 0, 1, 2, 3, 4])
         self.assertEqual(pc.disdubs_parts(self.names(5), cast), 5)
 
-    def test_more_than_ten_names_is_never_a_cast(self):
+    def test_more_than_ten_names_need_four_clips_each(self):
+        # Wie DisDubs seit b51c1a6: ueber zehn Namen ist es eine Besetzung,
+        # wenn im Schnitt vier Clips auf jeden Namen kommen.
+        # As DisDubs since b51c1a6: past ten names it is a cast when the
+        # names average four clips each.
         clips = self.clips(list(range(11)) + list(range(11)))
         self.assertEqual(pc.disdubs_parts(self.names(11), clips), 1)
+        cast = self.clips(list(range(12)) * 4)
+        self.assertEqual(pc.disdubs_parts(self.names(12), cast), 12)
+        thin = self.clips(list(range(12)) * 3 + [0, 1, 2])
+        self.assertEqual(pc.disdubs_parts(self.names(12), thin), 1)
+        # der 296-Clip-Pack mit 28 Namen / the 296-clip pack with 28 names
+        big = self.clips([i % 28 for i in range(296)])
+        self.assertEqual(pc.disdubs_parts(self.names(28), big), 28)
+
+    def test_names_differing_in_case_are_one_part(self):
+        tracks = [{"name": "Guan chao"}, {"name": "Guan Chao"}, {"name": "Lin"}]
+        clips = self.clips([0, 1, 2, 0, 2, 1, 2, 0, 1, 2])
+        self.assertEqual(pc.disdubs_parts(tracks, clips), 2)
+
+    def test_an_overlong_name_makes_one_part(self):
+        tracks = [{"name": "A"}, {"name": "x" * 41}]
+        self.assertEqual(pc.disdubs_parts(tracks, self.clips([0, 1] * 6)), 1)
 
 
 class I18n(unittest.TestCase):
